@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#000000" />
+  <title>AssessorIA</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css" />
+  <link rel="icon" href="./assets/terminal.svg" type="image/svg+xml">
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
+</head>
+<body>
+
+  <div class="layout">
+
+    <aside class="sidebar">
+      <div class="sidebar__section">
+        <h2 class="sidebar__title">sessões anteriores</h2>
+        <ul class="sidebar__list">
+        </ul>
+      </div>
+      <div class="sidebar__section">
+        <a class="sidebar__title" href="monitor.html">monitor</a>
+      </div>
+    </aside>
+
+    <div class="console">
+
+      <header class="console__header">
+        <div class="header__identity">
+          <span class="header__dot" id="status-dot" aria-hidden="true"></span>
+          <h1 class="header__title">root<span class="header__at">@</span>assessor:<span class="header__path">~</span><span class="header__cursor">_</span></h1>
+        </div>
+        <div class="header__meta">
+          <span class="header__label">sessão</span>
+          <code class="header__session" id="user-id">—</code>
+          <button class="header__reset" id="reset-session" title="Iniciar nova sessão">nova sessão</button>
+        </div>
+      </header>
+
+      <main class="console__thread" id="thread" aria-live="polite">
+        <div class="thread__empty" id="thread-empty">
+          <p class="empty__eyebrow">$ aguardando input_</p>
+          <p class="empty__text">Escreva uma pergunta abaixo para iniciar a conversa com o agente.</p>
+        </div>
+      </main>
+
+      <form class="console__composer" id="composer" autocomplete="off">
+        <span class="composer__prompt" aria-hidden="true">$</span>
+        <textarea
+          class="composer__input"
+          id="pergunta"
+          placeholder="Digite sua pergunta…"
+          rows="1"
+          required
+        ></textarea>
+        <button type="submit" class="composer__send" id="enviar" aria-label="Enviar pergunta">[enter]</button>
+      </form>
+
+      <p class="console__hint" id="hint"></p>
+
+    </div>
+
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

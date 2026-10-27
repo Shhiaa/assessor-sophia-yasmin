@@ -1,0 +1,1217 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Etapa 5 — MCP: o Assessor como servidor</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #050a14;
+  --cyan: #00e5ff;
+  --green: #00ff88;
+  --orange: #ff6b35;
+  --purple: #7c3aed;
+  --pink: #f472b6;
+  --text: #e8f4f8;
+  --muted: #7fa8c0;
+  --card: rgba(255,255,255,0.04);
+  --border: rgba(0,229,255,0.15);
+}
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+html, body { width:100%; height:100%; overflow:hidden; background:var(--bg); color:var(--text); font-family:'IBM Plex Sans',sans-serif; }
+
+#bg { position:fixed; inset:0; z-index:0; opacity:.3; pointer-events:none; }
+
+#progress-bar {
+  position:fixed; top:0; left:0; height:3px; z-index:200;
+  background:linear-gradient(90deg, var(--cyan), var(--purple));
+  transition: width .4s ease;
+}
+
+#topbar {
+  position:fixed; top:0; left:0; right:0; height:52px; z-index:150;
+  background:rgba(5,10,20,.88); backdrop-filter:blur(14px);
+  border-bottom:1px solid var(--border);
+  display:flex; align-items:center; justify-content:space-between; padding:0 32px;
+}
+.tb-label { font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--cyan); letter-spacing:2px; text-transform:uppercase; }
+.tb-counter { font-family:'IBM Plex Mono',monospace; font-size:13px; color:var(--muted); }
+.tb-title { font-family:'IBM Plex Sans',sans-serif; font-size:13px; color:var(--muted); max-width:360px; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+#slides { position:fixed; inset:0; z-index:1; }
+
+.slide {
+  position:absolute; inset:0;
+  display:flex; flex-direction:column; justify-content:flex-start; align-items:center;
+  padding:72px 60px 80px;
+  opacity:0; pointer-events:none;
+  transition: opacity .5s ease, transform .5s ease;
+  transform: translateX(60px);
+  overflow-y: auto;
+}
+.slide.active { opacity:1; pointer-events:all; transform:translateX(0); }
+.slide.prev   { opacity:0; pointer-events:none; transform:translateX(-60px); }
+.slide-inner { width:100%; max-width:1080px; margin:auto 0; }
+
+#nav-prev, #nav-next {
+  position:fixed; top:50%; z-index:200;
+  transform:translateY(-50%);
+  width:48px; height:48px; border-radius:50%;
+  border:1px solid var(--border); background:rgba(5,10,20,.7);
+  backdrop-filter:blur(8px); cursor:pointer;
+  display:flex; align-items:center; justify-content:center;
+  font-size:20px; color:var(--cyan);
+  transition:all .2s; user-select:none;
+}
+#nav-prev { left:16px; }
+#nav-next { right:16px; }
+#nav-prev:hover, #nav-next:hover { background:rgba(0,229,255,.12); border-color:var(--cyan); }
+#nav-prev.disabled, #nav-next.disabled { opacity:.25; pointer-events:none; }
+
+#dots { position:fixed; bottom:18px; left:50%; transform:translateX(-50%); display:flex; gap:6px; z-index:200; flex-wrap:wrap; max-width:70%; justify-content:center; }
+.dot { width:7px; height:7px; border-radius:50%; background:var(--muted); opacity:.4; cursor:pointer; transition:all .3s; }
+.dot.active { background:var(--cyan); opacity:1; transform:scale(1.3); }
+.dot.done { background:var(--green); opacity:.8; }
+
+.tag  { font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--cyan);   letter-spacing:3px; text-transform:uppercase; margin-bottom:10px; display:block; }
+.gtag { font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--green);  letter-spacing:3px; text-transform:uppercase; margin-bottom:10px; display:block; }
+.ptag { font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--purple); letter-spacing:3px; text-transform:uppercase; margin-bottom:10px; display:block; }
+.otag { font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--orange); letter-spacing:3px; text-transform:uppercase; margin-bottom:10px; display:block; }
+
+h1.hero-title { font-family:'Syne',sans-serif; font-size:clamp(2.2rem,4.6vw,4rem); font-weight:800; line-height:1.08; margin-bottom:20px; }
+h2.sec-title  { font-family:'Syne',sans-serif; font-size:clamp(1.4rem,3vw,2.3rem); font-weight:800; line-height:1.18; margin-bottom:12px; }
+h3.slide-h3   { font-family:'Syne',sans-serif; font-size:1.15rem; font-weight:700; margin-bottom:14px; }
+p.lead { color:var(--muted); font-size:.98rem; line-height:1.7; margin-bottom:22px; }
+
+.badge {
+  display:inline-flex; align-items:center; gap:8px;
+  background:rgba(0,229,255,.08); border:1px solid var(--border);
+  border-radius:20px; padding:6px 16px;
+  font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--cyan); letter-spacing:1px;
+  margin-bottom:26px; width:fit-content;
+}
+.badge::before { content:''; width:7px; height:7px; background:var(--green); border-radius:50%; animation:pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(1.5)} }
+
+.hero-q {
+  background:linear-gradient(135deg,rgba(0,229,255,.06),rgba(124,58,237,.06));
+  border:1px solid rgba(0,229,255,.2); border-left:4px solid var(--cyan);
+  border-radius:12px; padding:20px 26px; font-size:1.02rem; color:var(--text);
+  max-width:780px; margin-top:6px;
+  animation:fadeUp .8s ease both .3s;
+}
+@keyframes fadeUp { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:translateY(0)} }
+
+.card { background:var(--card); border:1px solid var(--border); border-radius:16px; padding:22px; }
+.g2 { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+.g3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; }
+@media(max-width:680px){.g2,.g3{grid-template-columns:1fr}}
+
+.pill-row { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:24px; }
+.pill { background:rgba(0,255,136,.07); border:1px solid rgba(0,255,136,.25); border-radius:20px; padding:5px 14px; font-size:12px; color:var(--green); font-family:'IBM Plex Mono',monospace; }
+
+.bridge { background:linear-gradient(135deg,rgba(0,229,255,.05),rgba(124,58,237,.05)); border:1px solid rgba(0,229,255,.2); border-radius:14px; padding:22px 26px; }
+
+/* ═══ MARCADOR DE BLOCO ═══ */
+.bloco-mark {
+  display:inline-flex; align-items:center; gap:10px; margin-bottom:14px;
+  font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:2.5px; text-transform:uppercase;
+  border-radius:20px; padding:5px 15px;
+}
+.bl-a { background:rgba(0,229,255,.09);  border:1px solid rgba(0,229,255,.35);  color:var(--cyan); }
+.bl-b { background:rgba(255,107,53,.09); border:1px solid rgba(255,107,53,.35); color:var(--orange); }
+.bl-c { background:rgba(0,255,136,.08);  border:1px solid rgba(0,255,136,.32);  color:var(--green); }
+
+/* ═══ TABELA ═══ */
+.tbl { width:100%; border-collapse:collapse; font-size:.82rem; }
+.tbl th { text-align:left; font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:1.5px; text-transform:uppercase; color:var(--cyan); padding:9px 12px; border-bottom:1px solid var(--border); white-space:nowrap; }
+.tbl td { padding:10px 12px; border-bottom:1px solid rgba(255,255,255,.05); color:var(--muted); vertical-align:top; line-height:1.5; }
+.tbl td strong, .tbl td code { color:var(--text); }
+.tbl td code { font-family:'IBM Plex Mono',monospace; background:rgba(0,0,0,.3); padding:1px 6px; border-radius:4px; font-size:.78rem; }
+.tbl tbody tr:hover td { background:rgba(0,229,255,.03); }
+.tbl tr.sep-a td { background:rgba(0,229,255,.05); }
+.tbl tr.sep-b td { background:rgba(255,107,53,.05); }
+.tbl tr.sep-c td { background:rgba(0,255,136,.04); }
+
+/* ═══ CÓDIGO ═══ */
+.code {
+  background:rgba(0,0,0,.42); border:1px solid var(--border); border-radius:10px;
+  padding:14px 18px; font-family:'IBM Plex Mono',monospace; font-size:.74rem;
+  line-height:1.7; overflow-x:auto; white-space:pre; color:#bfe4f2;
+}
+.code .k { color:var(--pink); }
+.code .s { color:var(--green); }
+.code .c { color:var(--muted); font-style:italic; }
+.code .h { color:var(--cyan); font-weight:500; }
+.code .o { color:var(--orange); }
+.code .del { color:#ff8fa3; }
+
+.code-wrap { border:1px solid var(--border); border-radius:9px; overflow:hidden; margin-bottom:14px; transition:border-color .2s, box-shadow .2s; }
+.code-wrap.open { border-color:var(--cyan); box-shadow:0 0 0 1px rgba(0,229,255,.08); }
+.code-header { display:flex; justify-content:space-between; align-items:center; padding:9px 14px; background:rgba(0,0,0,.55); border-bottom:1px solid var(--border); cursor:pointer; user-select:none; transition:background .15s; gap:12px; }
+.code-header:hover { background:rgba(0,229,255,.06); }
+.code-header .fname { font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--cyan); }
+.code-right { display:flex; align-items:center; gap:10px; flex-shrink:0; }
+.code-header .lbadge { font-family:'IBM Plex Mono',monospace; font-size:9.5px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; }
+.code-toggle-btn {
+  font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:.5px;
+  color:var(--cyan); border:1px solid var(--border); border-radius:20px; padding:3px 11px;
+  white-space:nowrap; transition:.2s; background:rgba(0,229,255,.05);
+}
+.code-toggle-btn::before { content:'▸ '; }
+.code-wrap.open .code-toggle-btn { color:var(--bg); background:var(--green); border-color:var(--green); font-weight:600; }
+.code-wrap.open .code-toggle-btn::before { content:'▾ '; }
+.copy-btn {
+  font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:.5px;
+  color:var(--purple); border:1px solid rgba(124,58,237,.4); border-radius:20px; padding:3px 11px;
+  white-space:nowrap; transition:.2s; background:rgba(124,58,237,.08); cursor:pointer;
+  display:none;
+}
+.copy-btn:hover { background:rgba(124,58,237,.2); color:var(--pink); }
+.copy-btn.done { color:var(--bg); background:var(--green); border-color:var(--green); font-weight:600; }
+.code-wrap.open .copy-btn { display:inline-block; }
+.code-wrap .code { display:none; border:none; border-radius:0; }
+.code-wrap.open .code { display:block; animation:codeIn .28s ease; }
+@keyframes codeIn { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:translateY(0)} }
+
+/* ═══ PASSOS ═══ */
+.step-marker { display:flex; align-items:center; gap:16px; margin-bottom:18px; }
+.step-num {
+  font-family:'Syne',sans-serif; font-weight:800; font-size:1.6rem;
+  width:52px; height:52px; border-radius:14px; display:flex; align-items:center; justify-content:center;
+  background:rgba(0,229,255,.08); border:1px solid var(--border); color:var(--cyan); flex-shrink:0;
+}
+.step-num.b { background:rgba(255,107,53,.08); border-color:rgba(255,107,53,.3); color:var(--orange); }
+.step-num.c { background:rgba(0,255,136,.07); border-color:rgba(0,255,136,.3); color:var(--green); }
+.step-meta { display:flex; flex-direction:column; gap:2px; }
+.step-file { font-family:'IBM Plex Mono',monospace; font-size:.92rem; color:var(--text); }
+.step-obj { font-size:.78rem; color:var(--muted); }
+
+.callout { border-left:3px solid; border-radius:0 8px 8px 0; padding:12px 16px; margin:12px 0 0; font-size:.83rem; line-height:1.6; }
+.callout .ct { font-family:'IBM Plex Mono',monospace; font-weight:500; font-size:9.5px; text-transform:uppercase; letter-spacing:1.5px; margin-bottom:5px; }
+.callout p { margin:0; color:var(--muted); font-size:.83rem; }
+.callout p + p { margin-top:8px; }
+.callout code { font-family:'IBM Plex Mono',monospace; background:rgba(0,0,0,.3); padding:1px 6px; border-radius:4px; color:var(--text); font-size:.78rem; }
+.co-ok   { border-color:var(--green);  background:rgba(0,255,136,.05); }
+.co-ok .ct { color:var(--green); }
+.co-warn { border-color:var(--orange); background:rgba(255,107,53,.05); }
+.co-warn .ct { color:var(--orange); }
+.co-info { border-color:var(--purple); background:rgba(124,58,237,.06); }
+.co-info .ct { color:#c4b5fd; }
+.co-err  { border-color:#ff4d6d; background:rgba(255,77,109,.06); }
+.co-err .ct { color:#ff8fa3; }
+
+/* ═══ TESTES ═══ */
+.test-box { background:rgba(0,255,136,.04); border:1px solid rgba(0,255,136,.22); border-radius:12px; padding:16px 20px; margin-bottom:12px; }
+.test-box .tt { font-family:'Syne',sans-serif; font-weight:800; font-size:.88rem; color:var(--green); margin-bottom:8px; display:flex; align-items:center; gap:8px; }
+.test-box ol, .test-box ul { margin-left:18px; }
+.test-box li { font-size:.83rem; color:var(--muted); line-height:1.65; margin-bottom:4px; }
+.test-box li strong, .test-box li code { color:var(--text); }
+.test-box code { font-family:'IBM Plex Mono',monospace; background:rgba(0,0,0,.3); padding:1px 6px; border-radius:4px; font-size:.78rem; }
+.test-box p { font-size:.83rem; color:var(--muted); line-height:1.65; }
+
+/* ═══ TESTE CONVERSACIONAL (pergunta → resposta esperada) ═══ */
+.qa { width:100%; border-collapse:collapse; font-size:.82rem; margin-top:8px; }
+.qa th { text-align:left; font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:1.5px; text-transform:uppercase; color:var(--green); padding:8px 10px; border-bottom:1px solid rgba(0,255,136,.25); }
+.qa td { padding:10px; border-bottom:1px solid rgba(255,255,255,.06); color:var(--muted); vertical-align:top; line-height:1.55; font-size:.82rem; }
+.qa td.n { color:var(--green); font-family:'IBM Plex Mono',monospace; width:26px; text-align:center; }
+.qa tr:last-child td { border-bottom:none; }
+.voce {
+  color:var(--text); font-family:'IBM Plex Mono',monospace; font-size:.78rem;
+  background:rgba(0,229,255,.08); border:1px solid rgba(0,229,255,.22);
+  border-radius:6px; padding:3px 9px; display:inline-block; line-height:1.45;
+}
+.acao { color:var(--text); font-size:.8rem; }
+.qa .ok  { color:var(--green); font-weight:500; }
+.qa .nao { color:var(--orange); font-weight:500; }
+.qa code { font-family:'IBM Plex Mono',monospace; background:rgba(0,0,0,.3); padding:1px 6px; border-radius:4px; color:var(--text); font-size:.76rem; }
+
+/* ═══ CHECKLIST ANIMADA ═══ */
+.final-check { display:flex; flex-direction:column; gap:8px; margin-bottom:18px; }
+.fc-item {
+  display:flex; align-items:center; gap:12px; padding:9px 16px;
+  background:var(--card); border:1px solid var(--border); border-radius:10px;
+  opacity:0; transform:translateX(-16px);
+}
+.final-check.play .fc-item { animation:fcIn .5s ease forwards; }
+.final-check.play .fc-item:nth-child(1){animation-delay:.04s}
+.final-check.play .fc-item:nth-child(2){animation-delay:.14s}
+.final-check.play .fc-item:nth-child(3){animation-delay:.24s}
+.final-check.play .fc-item:nth-child(4){animation-delay:.34s}
+.final-check.play .fc-item:nth-child(5){animation-delay:.44s}
+.final-check.play .fc-item:nth-child(6){animation-delay:.54s}
+.final-check.play .fc-item:nth-child(7){animation-delay:.64s}
+.final-check.play .fc-item:nth-child(8){animation-delay:.74s}
+.final-check.play .fc-item:nth-child(9){animation-delay:.84s}
+.final-check.play .fc-item:nth-child(10){animation-delay:.94s}
+.final-check.play .fc-item:nth-child(11){animation-delay:1.04s}
+.final-check.play .fc-item:nth-child(12){animation-delay:1.14s}
+.final-check.play .fc-item:nth-child(13){animation-delay:1.24s}
+.final-check.play .fc-item:nth-child(14){animation-delay:1.34s}
+@keyframes fcIn { to{opacity:1;transform:translateX(0)} }
+.fc-check { width:20px; height:20px; border-radius:50%; border:1px solid var(--green); color:var(--green); flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:11px; }
+.fc-text { font-size:.82rem; color:var(--text); font-family:'IBM Plex Mono',monospace; }
+
+/* ═══ ANTES / DEPOIS ═══ */
+.yn { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+@media(max-width:680px){ .yn{ grid-template-columns:1fr; } }
+.yn-col { border-radius:14px; padding:18px 20px; }
+.yn-yes { background:rgba(0,255,136,.05); border:1px solid rgba(0,255,136,.22); }
+.yn-no  { background:rgba(255,107,53,.05); border:1px solid rgba(255,107,53,.22); }
+.yn-col h4 { font-family:'Syne',sans-serif; font-size:.92rem; margin-bottom:12px; }
+.yn-col li { list-style:none; font-size:.82rem; color:var(--muted); line-height:1.55; padding:5px 0 5px 20px; position:relative; }
+.yn-yes li::before { content:'✓'; position:absolute; left:0; color:var(--green); }
+.yn-no  li::before { content:'✕'; position:absolute; left:0; color:var(--orange); }
+
+.next-pills { display:flex; flex-wrap:wrap; gap:10px; }
+.next-pill { font-family:'IBM Plex Mono',monospace; font-size:11.5px; padding:8px 15px; border-radius:20px; background:rgba(124,58,237,.08); border:1px solid rgba(124,58,237,.3); color:var(--pink); }
+
+.slide-scroll { overflow-y:auto; }
+.divider { height:1px; background:var(--border); margin:18px 0; }
+
+code.inline { font-family:'IBM Plex Mono',monospace; color:var(--cyan); background:rgba(0,229,255,.06); padding:1px 7px; border-radius:5px; font-size:.86em; }
+
+/* ═══ CICLO DE VIDA ═══ */
+.ciclo { display:flex; align-items:stretch; gap:8px; flex-wrap:wrap; margin:10px 0 6px; }
+.ci-step {
+  flex:1; min-width:132px; border-radius:12px; padding:14px 14px;
+  background:var(--card); border:1px solid var(--border);
+  font-family:'IBM Plex Mono',monospace; font-size:.72rem; color:var(--muted); line-height:1.5;
+}
+.ci-step .ci-n { display:block; font-size:.68rem; letter-spacing:1.5px; margin-bottom:6px; opacity:.75; }
+.ci-step .ci-t { display:block; font-size:.86rem; color:var(--text); margin-bottom:5px; font-family:'Syne',sans-serif; font-weight:700; }
+.ci-a { border-color:rgba(0,229,255,.4);  background:rgba(0,229,255,.06); }
+.ci-a .ci-n { color:var(--cyan); }
+.ci-b { border-color:rgba(255,107,53,.4); background:rgba(255,107,53,.06); }
+.ci-b .ci-n { color:var(--orange); }
+.ci-c { border-color:rgba(0,255,136,.35); background:rgba(0,255,136,.05); }
+.ci-c .ci-n { color:var(--green); }
+
+/* ═══ CADEIA CAUSAL ═══ */
+.cadeia { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:12px 0 4px; }
+.cd-box {
+  flex:1; min-width:150px; border-radius:10px; padding:13px 15px; text-align:center;
+  background:rgba(255,77,109,.06); border:1px solid rgba(255,77,109,.28);
+  font-family:'IBM Plex Mono',monospace; font-size:.74rem; color:#ffb3c1; line-height:1.5;
+}
+.cd-box.fim { background:rgba(255,77,109,.14); border-color:rgba(255,77,109,.5); color:#ff8fa3; font-weight:600; }
+.cd-arrow { color:#ff8fa3; font-size:1.3rem; flex-shrink:0; }
+@media(max-width:780px){ .cd-arrow{ transform:rotate(90deg); } }
+
+/* ═══ FLUXO DE AGENTES ═══ */
+.agflow { display:flex; align-items:stretch; gap:10px; flex-wrap:wrap; margin:6px 0 4px; }
+.agnode {
+  flex:1; min-width:140px; border-radius:12px; padding:14px 16px;
+  font-family:'IBM Plex Mono',monospace; font-size:.76rem; text-align:center;
+  background:var(--card); border:1px solid var(--border); color:var(--muted);
+}
+.agnode .an-name { font-size:.86rem; color:var(--text); display:block; margin-bottom:6px; }
+.agnode.has  { background:rgba(0,255,136,.06); border-color:rgba(0,255,136,.35); }
+.agnode.has .an-name { color:var(--green); }
+.agnode.hasnt { background:rgba(255,107,53,.05); border-color:rgba(255,107,53,.25); }
+.agnode.hasnt .an-name { color:var(--orange); }
+</style>
+</head>
+<body>
+
+<canvas id="bg"></canvas>
+<div id="progress-bar"></div>
+
+<div id="topbar">
+  <span class="tb-label">⬡ Etapa 5 — MCP: o Assessor como servidor</span>
+  <span class="tb-title" id="slide-title-bar"></span>
+  <span class="tb-counter" id="slide-counter"></span>
+</div>
+
+<div id="nav-prev">←</div>
+<div id="nav-next">→</div>
+<div id="dots"></div>
+
+<div id="slides">
+
+<!-- ─── 0: HERO ─── -->
+<div class="slide active" data-title="Abertura">
+<div class="slide-inner">
+  <div class="badge">MCP · CLIENTE · SERVIDOR · PROTOCOLO</div>
+  <h1 class="hero-title">De tool interna para <span style="color:var(--cyan)">protocolo</span>:<br>o assessor que <span style="color:var(--orange)">outro agente</span> usa.</h1>
+  <p class="lead" style="max-width:760px;">Vocês já têm tools LangChain que o grafo chama. Elas só existem <strong style="color:var(--text)">dentro deste Python</strong>. Nesta etapa, publicamos as tools de finanças como um <strong style="color:var(--text)">servidor MCP</strong> — o mesmo contrato que Cursor, Cline e o Assessor de um colega entendem.</p>
+  <div class="hero-q">📌 <strong>Três perguntas guiam a aula:</strong> o que é um protocolo? por que MCP existe se já temos API e <code>@tool</code>? e como o Cursor consulta o Postgres <em>sem saber que o Postgres existe</em>?</div>
+  <div class="pill-row" style="margin-top:22px;">
+    <div class="pill">🧱 teoria primeiro, código depois</div>
+    <div class="pill">✅ teste no Cursor e no Cline</div>
+    <div class="pill">📋 código pronto para copiar</div>
+    <div class="pill">🔷 sem mexer em financeiro.py</div>
+  </div>
+  <div class="callout co-warn" style="max-width:760px;">
+    <div class="ct">Pré-requisitos</div>
+    <p>A Etapa 2 precisa estar no ar: Postgres com a tabela <code>transactions</code>, tools em <code>app/tools/financeiro.py</code> e o chat do Assessor respondendo sobre saldo e gastos. O container <code>pg</code> (ou o Postgres local) tem que estar ligado — o servidor MCP usa a mesma <code>DATABASE_URL</code>.</p>
+  </div>
+</div>
+</div>
+
+<!-- ─── 1: DIAGNÓSTICO ─── -->
+<div class="slide" data-title="As tools só servem este grafo">
+<div class="slide-inner slide-scroll">
+  <span class="otag">diagnóstico</span>
+  <h2 class="sec-title">As tools só servem <span style="color:var(--orange)">este grafo</span></h2>
+  <p class="lead">Hoje o agente financeiro chama <code class="inline">add_transaction</code> porque o <code class="inline">graph.py</code> importou a lista <code class="inline">TOOLS</code>. Isso é function calling <strong style="color:var(--text)">dentro do mesmo processo</strong>. O Cursor não importa Python. O Cline não conhece LangChain. Um colega em Node não consegue usar o saldo de vocês.</p>
+
+  <div class="yn" style="margin-bottom:18px;">
+    <div class="yn-col yn-no">
+      <h4 style="color:var(--orange)">O que temos hoje</h4>
+      <ul>
+        <li><code style="color:var(--text)">@tool</code> LangChain, acoplada ao grafo</li>
+        <li>Só quem importa <code>financeiro.py</code> usa a tool</li>
+        <li>Trocar o framework = reescrever a integração</li>
+        <li>O chat do Assessor é o único cliente</li>
+      </ul>
+    </div>
+    <div class="yn-col yn-yes">
+      <h4 style="color:var(--green)">O que MCP entrega</h4>
+      <ul>
+        <li>Contrato padrão, independente de linguagem</li>
+        <li>O SQL continua num lugar só</li>
+        <li>Cursor, Cline e o Assessor falam o mesmo protocolo</li>
+        <li>Descoberta em runtime: <code>list_tools</code> → <code>call_tool</code></li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout co-err">
+    <div class="ct">Não é “mais uma tool”</div>
+    <p>Se o objetivo fosse só consultar saldo, a <code>@tool</code> já faz isso. MCP só vale quando <strong style="color:var(--text)">quem tem a capacidade e quem usa a capacidade não são o mesmo programa</strong>. Esta etapa prova isso: o Cursor consulta o banco de vocês sem abrir o FastAPI.</p>
+  </div>
+</div>
+</div>
+
+<!-- ─── 2: O QUE É MCP ─── -->
+<div class="slide" data-title="O que é MCP">
+<div class="slide-inner slide-scroll">
+  <span class="ptag">teoria</span>
+  <h2 class="sec-title">MCP é um <span style="color:var(--cyan)">protocolo</span>, não uma biblioteca</h2>
+  <p class="lead"><strong style="color:var(--text)">Model Context Protocol</strong> — Protocolo de Contexto do Modelo. É um padrão aberto que descreve <em>como</em> um aplicativo de IA conversa com ferramentas e dados externos. A analogia certa não é “pacote Python”. É HTTP: um acordo de mensagens que qualquer um pode implementar.</p>
+
+  <div class="g3" style="margin-bottom:18px;">
+    <div class="card" style="border-color:rgba(0,229,255,.35);">
+      <h4 style="font-family:'Syne',sans-serif;font-size:.88rem;color:var(--cyan);margin-bottom:8px;">📜 Especificação</h4>
+      <p style="font-size:.82rem;color:var(--muted);line-height:1.6;">O contrato: quais mensagens existem, o formato JSON-RPC, o handshake, as primitivas. Publicada em <code class="inline">modelcontextprotocol.io</code>.</p>
+    </div>
+    <div class="card" style="border-color:rgba(0,255,136,.35);">
+      <h4 style="font-family:'Syne',sans-serif;font-size:.88rem;color:var(--green);margin-bottom:8px;">🧰 SDKs</h4>
+      <p style="font-size:.82rem;color:var(--muted);line-height:1.6;">Implementações em Python, TypeScript, Java, Kotlin, C#, Go, Rust… Nós usamos o SDK Python. O Cursor usa o de TypeScript. O protocolo é o mesmo.</p>
+    </div>
+    <div class="card" style="border-color:rgba(255,107,53,.35);">
+      <h4 style="font-family:'Syne',sans-serif;font-size:.88rem;color:var(--orange);margin-bottom:8px;">🔌 Servidores e clientes</h4>
+      <p style="font-size:.82rem;color:var(--muted);line-height:1.6;">Quem <em>expõe</em> capacidade é servidor. Quem <em>consome</em> é cliente. Nesta etapa o Assessor é servidor; o Cursor é cliente.</p>
+    </div>
+  </div>
+
+  <div class="hero-q" style="max-width:100%;">HTTP é o contrato entre o navegador e o FastAPI. MCP é o contrato entre um modelo e uma ferramenta. Os dois resolvem o mesmo tipo de problema: <strong>dois programas diferentes precisam conversar sem importar o código um do outro.</strong></div>
+</div>
+</div>
+
+<!-- ─── 3: HISTÓRIA ─── -->
+<div class="slide" data-title="Quando e por quem">
+<div class="slide-inner slide-scroll">
+  <span class="ptag">teoria</span>
+  <h2 class="sec-title">Quando nasceu, e <span style="color:var(--purple)">por quem</span></h2>
+  <p class="lead">MCP não é “da Google” nem “da OpenAI”. Começou dentro da Anthropic, foi aberto ao mundo e hoje é governado fora de uma empresa só — o mesmo caminho que Linux e Kubernetes fizeram.</p>
+
+  <div class="ciclo" style="margin-bottom:18px;">
+    <div class="ci-step ci-a">
+      <span class="ci-n">JUL 2024</span>
+      <span class="ci-t">A ideia</span>
+      David Soria Parra (Anthropic) se irrita em copiar código entre o Claude Desktop e o editor. Tinha trabalhado com LSP e viu o paralelo.
+    </div>
+    <div class="ci-step ci-b">
+      <span class="ci-n">NOV 2024</span>
+      <span class="ci-t">Open source</span>
+      25 de novembro de 2024: Anthropic publica a spec, SDKs Python/TS e servidores de exemplo (GitHub, Slack, Postgres, Drive).
+    </div>
+    <div class="ci-step ci-c">
+      <span class="ci-n">DEZ 2025</span>
+      <span class="ci-t">Fundação</span>
+      MCP vai para a Agentic AI Foundation, sob a Linux Foundation. Anthropic, Block e OpenAI como cofundadores. Deixa de ser “projeto de uma empresa”.
+    </div>
+  </div>
+
+  <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px;">
+    <table class="tbl">
+      <thead><tr><th>Quem</th><th>Papel</th></tr></thead>
+      <tbody>
+        <tr><td><strong>David Soria Parra</strong></td><td>Co-criador. A analogia com o Language Server Protocol (LSP) veio daqui.</td></tr>
+        <tr><td><strong>Justin Spahr-Summers</strong></td><td>Co-criador. Prototipou a primeira versão e empurrou a adoção interna na Anthropic.</td></tr>
+        <tr><td><strong>Anthropic</strong></td><td>Empresa que abriu o protocolo em novembro de 2024. Não “dona” exclusiva hoje.</td></tr>
+        <tr><td><strong>Linux Foundation / AAIF</strong></td><td>Governança atual. Spec recente: <code>2026-07-28</code>.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout co-info">
+    <div class="ct">Por que isso importa na disciplina</div>
+    <p>Vocês estão aprendendo um padrão da indústria, não um recurso de um fornecedor. Cursor, Claude, VS Code, Gemini CLI e o Google Calendar MCP falam o mesmo idioma. Daqui a dois anos o cliente pode mudar; o contrato permanece.</p>
+  </div>
+</div>
+</div>
+
+<!-- ─── 4: LSP E MxN ─── -->
+<div class="slide" data-title="A inspiração: LSP e o problema M×N">
+<div class="slide-inner slide-scroll">
+  <span class="ptag">teoria</span>
+  <h2 class="sec-title">A inspiração: LSP e o problema <span style="color:var(--orange)">M × N</span></h2>
+  <p class="lead">O <strong style="color:var(--text)">Language Server Protocol</strong> (Microsoft, 2016) resolveu um problema idêntico para editores: sem padrão, cada editor precisava de um plugin para cada linguagem — VS Code × Python, Vim × Python, VS Code × Rust… Isso é <strong style="color:var(--text)">M editores × N linguagens</strong> integrações. Com LSP, cada editor implementa o cliente uma vez e cada linguagem implementa o servidor uma vez: <strong style="color:var(--text)">M + N</strong>.</p>
+
+  <div class="g2" style="margin-bottom:18px;">
+    <div class="card">
+      <h4 style="font-family:'Syne',sans-serif;font-size:.92rem;color:var(--orange);margin-bottom:10px;">Antes — M × N</h4>
+      <p style="font-size:.82rem;color:var(--muted);line-height:1.65;">5 agentes × 8 sistemas = <strong style="color:var(--text)">40 conectores</strong> artesanais. Cada um com auth, schema e bugs próprios. Trocar o modelo = reescrever tudo.</p>
+    </div>
+    <div class="card">
+      <h4 style="font-family:'Syne',sans-serif;font-size:.92rem;color:var(--green);margin-bottom:10px;">Depois — M + N</h4>
+      <p style="font-size:.82rem;color:var(--muted);line-height:1.65;">5 clientes MCP + 8 servidores MCP = <strong style="color:var(--text)">13 implementações</strong>. O Assessor publica um servidor; Cursor, Cline e o colega conectam sem pedir o código.</p>
+    </div>
+  </div>
+
+  <div class="callout co-ok">
+    <div class="ct">A frase para lembrar</div>
+    <p>LSP padronizou “como o editor fala com a linguagem”. MCP padroniza “como o modelo fala com a ferramenta”. Vocês já viram o equivalente HTTP na migração para FastAPI. É o mesmo raciocínio, terceira vez: <strong style="color:var(--text)">contrato entre processos</strong>.</p>
+  </div>
+</div>
+</div>
+
+<!-- ─── 5: CLIENTE SERVIDOR ─── -->
+<div class="slide" data-title="Cliente e servidor">
+<div class="slide-inner slide-scroll">
+  <span class="ptag">teoria</span>
+  <h2 class="sec-title">Quem é o <span style="color:var(--cyan)">cliente</span> e quem é o <span style="color:var(--green)">servidor</span></h2>
+  <p class="lead">Os nomes confundem porque “servidor” parece o FastAPI. Em MCP, <strong style="color:var(--text)">servidor é quem oferece ferramentas</strong>. Pode ser um script Python na sua máquina, falando pela entrada e saída padrão. Não precisa de porta 8000.</p>
+
+  <div class="agflow" style="margin-bottom:18px;">
+    <div class="agnode has">
+      <span class="an-name">Host</span>
+      O aplicativo com o modelo: Cursor, Cline, Claude Desktop, o Assessor. Ele orquestra a conversa.
+    </div>
+    <div class="agnode has">
+      <span class="an-name">Cliente MCP</span>
+      O pedaço do host que fala o protocolo. Lista tools, chama tools, mostra o resultado para o modelo.
+    </div>
+    <div class="agnode hasnt">
+      <span class="an-name">Servidor MCP</span>
+      O processo que <em>tem</em> a capacidade. No nosso caso: <code>app/mcp_server.py</code> + Postgres.
+    </div>
+  </div>
+
+  <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px;">
+    <table class="tbl">
+      <thead><tr><th>Nesta etapa</th><th>Papel</th><th>Sabe Postgres?</th></tr></thead>
+      <tbody>
+        <tr><td><code>app/mcp_server.py</code></td><td>Servidor</td><td><strong style="color:var(--green)">Sim</strong> — importa <code>financeiro.py</code></td></tr>
+        <tr><td>Cursor / Cline</td><td>Host + cliente</td><td><strong style="color:var(--orange)">Não</strong> — só vê nomes de tools</td></tr>
+        <tr><td>O modelo (Claude, GPT, Ollama)</td><td>Cérebro do host</td><td>Não. Recebe a descrição das tools e decide chamar.</td></tr>
+        <tr><td>FastAPI / chat do Assessor</td><td>Fora desta etapa</td><td>Continua usando <code>@tool</code> direto. Não foi mexido.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout co-warn">
+    <div class="ct">Um processo, dois papéis no futuro</div>
+    <p>Na próxima etapa o Assessor também será <strong style="color:var(--text)">cliente</strong>: vai consumir um MCP (o de vocês, ou o do Google Calendar). Um mesmo programa pode ser servidor e cliente. Hoje ele só <em>serve</em>.</p>
+  </div>
+</div>
+</div>
+
+<!-- ─── 6: PRIMITIVAS ─── -->
+<div class="slide" data-title="Tools, resources, prompts">
+<div class="slide-inner slide-scroll">
+  <span class="ptag">teoria</span>
+  <h2 class="sec-title">Três primitivas: <span style="color:var(--cyan)">tools</span>, <span style="color:var(--green)">resources</span>, <span style="color:var(--orange)">prompts</span></h2>
+  <p class="lead">A spec não é só “chamar função”. São três tipos de oferta. Nesta etapa usamos só a primeira — mas vocês precisam conhecer as três para não achar que MCP = tool calling com outro nome.</p>
+
+  <div class="g3" style="margin-bottom:18px;">
+    <div class="card" style="border-color:rgba(0,229,255,.35);">
+      <h4 style="font-family:'Syne',sans-serif;font-size:.88rem;color:var(--cyan);margin-bottom:8px;">🛠️ Tools</h4>
+      <p style="font-size:.82rem;color:var(--muted);line-height:1.6;margin-bottom:8px;"><strong style="color:var(--text)">Quem decide:</strong> o modelo.</p>
+      <p style="font-size:.82rem;color:var(--muted);line-height:1.6;">Funções com schema JSON. Podem ler <em>e escrever</em>. Ex.: <code class="inline">total_balance</code>, <code class="inline">add_transaction</code>. Métodos: <code class="inline">tools/list</code>, <code class="inline">tools/call</code>.</p>
+    </div>
+    <div class="card" style="border-color:rgba(0,255,136,.35);">
+      <h4 style="font-family:'Syne',sans-serif;font-size:.88rem;color:var(--green);margin-bottom:8px;">📦 Resources</h4>
+      <p style="font-size:.82rem;color:var(--muted);line-height:1.6;margin-bottom:8px;"><strong style="color:var(--text)">Quem decide:</strong> o aplicativo / o usuário.</p>
+      <p style="font-size:.82rem;color:var(--muted);line-height:1.6;">Dados passivos, em geral só leitura: um arquivo, o schema do banco, um PDF. O modelo não “clica” sozinho. Ex.: o FAQ como recurso, não como tool.</p>
+    </div>
+    <div class="card" style="border-color:rgba(255,107,53,.35);">
+      <h4 style="font-family:'Syne',sans-serif;font-size:.88rem;color:var(--orange);margin-bottom:8px;">💬 Prompts</h4>
+      <p style="font-size:.82rem;color:var(--muted);line-height:1.6;margin-bottom:8px;"><strong style="color:var(--text)">Quem decide:</strong> o usuário.</p>
+      <p style="font-size:.82rem;color:var(--muted);line-height:1.6;">Templates prontos (“feche o mês”, “prepare a reunião”). O cliente mostra no menu; a pessoa escolhe. Não é o modelo inventando a chamada.</p>
+    </div>
+  </div>
+
+  <div class="callout co-info">
+    <div class="ct">Por que começamos por tools</div>
+    <p>É o que vocês já têm no LangChain. A distância conceitual é a menor: a mesma função, outra porta. Resources e prompts entram depois, quando o servidor de agenda e o FAQ ganharem cara de “documento”, não só de “ação”.</p>
+  </div>
+</div>
+</div>
+
+<!-- ─── 7: TRANSPORTE ─── -->
+<div class="slide" data-title="Como as mensagens viajam">
+<div class="slide-inner slide-scroll">
+  <span class="ptag">teoria</span>
+  <h2 class="sec-title">Como as mensagens <span style="color:var(--cyan)">viajam</span></h2>
+  <p class="lead">A camada de dados é JSON-RPC 2.0 (pedido com <code class="inline">id</code>, método, params; resposta com <code class="inline">result</code> ou <code class="inline">error</code>). Embaixo disso, o <strong style="color:var(--text)">transporte</strong> — o cano por onde o JSON passa.</p>
+
+  <div class="g2" style="margin-bottom:18px;">
+    <div class="card" style="border-color:rgba(0,229,255,.4);">
+      <h4 style="font-family:'Syne',sans-serif;font-size:.92rem;color:var(--cyan);margin-bottom:10px;">stdio — o que usamos hoje</h4>
+      <p style="font-size:.82rem;color:var(--muted);line-height:1.65;">O cliente <strong style="color:var(--text)">sobe o servidor como processo filho</strong> e conversa pela entrada/saída padrão. Não tem URL, não tem porta, não tem CORS. É o modo do <code class="inline">.cursor/mcp.json</code> com <code class="inline">command</code> + <code class="inline">args</code>.</p>
+    </div>
+    <div class="card">
+      <h4 style="font-family:'Syne',sans-serif;font-size:.92rem;color:var(--orange);margin-bottom:10px;">Streamable HTTP — o próximo</h4>
+      <p style="font-size:.82rem;color:var(--muted);line-height:1.65;">O servidor já está no ar, o cliente aponta para uma URL. É o caso do Google Calendar MCP: <code class="inline">https://calendarmcp.googleapis.com/mcp/v1</code>. Entra OAuth. Não é desta aula.</p>
+    </div>
+  </div>
+
+  <div class="ciclo">
+    <div class="ci-step ci-a"><span class="ci-n">1</span><span class="ci-t">initialize</span>Cliente e servidor combinam versão e capacidades.</div>
+    <div class="ci-step ci-b"><span class="ci-n">2</span><span class="ci-t">tools/list</span>O servidor devolve o catálogo: nome, descrição, schema de argumentos.</div>
+    <div class="ci-step ci-c"><span class="ci-n">3</span><span class="ci-t">tools/call</span>O modelo escolhe uma tool; o cliente pede execução; o servidor devolve o resultado.</div>
+  </div>
+
+  <div class="callout co-err" style="margin-top:16px;">
+    <div class="ct">stdout é o protocolo</div>
+    <p>Em stdio, <code>print("oi")</code> no servidor <strong style="color:var(--text)">quebra a conexão</strong>: o cliente espera JSON-RPC e recebe texto solto. Log vai para <code>sys.stderr</code>. Isso aparece de propósito no código desta etapa.</p>
+  </div>
+</div>
+</div>
+
+<!-- ─── 8: API vs MCP ─── -->
+<div class="slide" data-title="API versus MCP">
+<div class="slide-inner slide-scroll">
+  <span class="ptag">teoria</span>
+  <h2 class="sec-title">API e MCP <span style="color:var(--orange)">não</span> são a mesma coisa</h2>
+  <p class="lead">A pergunta que sempre vem: <em>“por que não exponho um GET /saldo no FastAPI?”</em> Dá. Vocês já fizeram isso com o chat. A diferença não é “um é moderno”. É <strong style="color:var(--text)">quem está do outro lado e o que o contrato assume</strong>.</p>
+
+  <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px;">
+    <table class="tbl">
+      <thead><tr><th></th><th>REST / FastAPI</th><th>MCP</th><th>@tool LangChain</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Do outro lado</strong></td><td>Navegador, app, outro backend</td><td>Um host de LLM (Cursor, agente)</td><td>O mesmo processo Python</td></tr>
+        <tr><td><strong>Descoberta</strong></td><td>Você lê o Swagger / o README</td><td><code>tools/list</code> em runtime</td><td>Import da lista no código</td></tr>
+        <tr><td><strong>Quem decide chamar</strong></td><td>O programador (ou o front)</td><td>O modelo, com schema e descrição</td><td>O modelo, no loop do agente</td></tr>
+        <tr><td><strong>Auth típica</strong></td><td>API key, JWT, cookie</td><td>OAuth (remoto) ou processo local</td><td>Nenhuma — é função</td></tr>
+        <tr><td><strong>Transporte</strong></td><td>HTTP</td><td>stdio ou HTTP do protocolo</td><td>Chamada de função</td></tr>
+        <tr><td><strong>Quando usar</strong></td><td>Interface humana ou serviço</td><td>Capacidade para <em>qualquer</em> agente</td><td>Capacidade só deste grafo</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout co-ok">
+    <div class="ct">Os três convivem no Assessor</div>
+    <p>FastAPI continua sendo a porta do <strong style="color:var(--text)">usuário</strong>. <code>@tool</code> continua sendo a porta do <strong style="color:var(--text)">grafo</strong>. MCP é a porta de <strong style="color:var(--text)">outro agente</strong>. Não substituímos nada nesta etapa — acrescentamos uma porta.</p>
+  </div>
+</div>
+</div>
+
+<!-- ─── 9: QUANDO VALE ─── -->
+<div class="slide" data-title="Quando MCP vale">
+<div class="slide-inner slide-scroll">
+  <span class="ptag">teoria</span>
+  <h2 class="sec-title">O teste de uma frase: <span style="color:var(--cyan)">mesmo processo?</span></h2>
+  <p class="lead">Antes de criar um MCP, pergunte: <em>essa capacidade já vive no mesmo Python que o agente?</em> Se sim, <code class="inline">@tool</code> ganha. MCP é overhead. Se não — outro app, outra equipe, outra linguagem, outro aluno — aí o protocolo paga o custo.</p>
+
+  <div class="yn" style="margin-bottom:18px;">
+    <div class="yn-col yn-no">
+      <h4 style="color:var(--orange)">Não use MCP</h4>
+      <ul>
+        <li>Cotação de dólar com um GET que vocês controlam</li>
+        <li>Feriado da BrasilAPI encapsulado numa tool</li>
+        <li>E-mail com <code>smtplib</code> no mesmo arquivo</li>
+        <li>“Para parecer moderno” em cima de função interna</li>
+      </ul>
+    </div>
+    <div class="yn-col yn-yes">
+      <h4 style="color:var(--green)">Use MCP</h4>
+      <ul>
+        <li>O Cursor precisa do saldo sem importar o projeto</li>
+        <li>O Assessor consome o Calendar da Google</li>
+        <li>A turma B usa as tools da turma A sem copiar SQL</li>
+        <li>Trocar o cérebro (Ollama → outro) sem reescrever as mãos</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout co-warn">
+    <div class="ct">Pergunta de prova</div>
+    <p>“Dá para buscar cotação via MCP?” Sim. “Devemos?” Em geral não: o Assessor já é Python e a API é um GET. MCP brilha quando vocês <strong style="color:var(--text)">não escrevem o outro lado</strong> — ou quando o outro lado não pode importar o vosso código.</p>
+  </div>
+</div>
+</div>
+
+<!-- ─── 10: UTILIDADES ─── -->
+<div class="slide" data-title="Para que serve na prática">
+<div class="slide-inner slide-scroll">
+  <span class="ptag">teoria</span>
+  <h2 class="sec-title">Utilidades que vocês <span style="color:var(--green)">já viram</span> sem saber o nome</h2>
+  <p class="lead">O Cursor que vocês usam agora é um host MCP. Quando alguém “liga o GitHub” ou “liga o banco” nas configurações, está apontando um cliente para um servidor. A ideia desta etapa é vocês <strong style="color:var(--text)">estarem do outro lado</strong> da tomada.</p>
+
+  <div class="g3" style="margin-bottom:16px;">
+    <div class="card">
+      <h4 style="font-family:'Syne',sans-serif;font-size:.88rem;color:var(--cyan);margin-bottom:8px;">IDE como cliente</h4>
+      <p style="font-size:.82rem;color:var(--muted);line-height:1.6;">Cursor e Cline leem arquivos, git, e agora o Assessor. O modelo ganha mãos no seu ambiente sem cada ferramenta virar plugin específico.</p>
+    </div>
+    <div class="card">
+      <h4 style="font-family:'Syne',sans-serif;font-size:.88rem;color:var(--green);margin-bottom:8px;">Empresa como servidor</h4>
+      <p style="font-size:.82rem;color:var(--muted);line-height:1.6;">Google Calendar, Gmail, Notion, GitHub publicam MCP oficial. Vocês não reimplementam a API: autenticam e descobrem as tools.</p>
+    </div>
+    <div class="card">
+      <h4 style="font-family:'Syne',sans-serif;font-size:.88rem;color:var(--orange);margin-bottom:8px;">Produto como plataforma</h4>
+      <p style="font-size:.82rem;color:var(--muted);line-height:1.6;">O Assessor deixa de ser só um chat. Vira capacidade. Qualquer agente da escola pode perguntar o saldo, com a permissão certa.</p>
+    </div>
+  </div>
+
+  <div class="callout co-ok">
+    <div class="ct">O recorte desta aula</div>
+    <p>Um servidor, cinco tools que já existiam, dois clientes (Cursor e Cline). Sem OAuth, sem Google, sem o Assessor como cliente. Isso vem nas próximas aulas — e só faz sentido depois que vocês sentirem o protocolo na pele.</p>
+  </div>
+</div>
+</div>
+
+<!-- ─── 11: MAPA DA ETAPA ─── -->
+<div class="slide" data-title="Mapa da etapa">
+<div class="slide-inner slide-scroll">
+  <span class="gtag">prática</span>
+  <h2 class="sec-title">Da teoria para o <span style="color:var(--cyan)">código</span></h2>
+  <p class="lead">Nada em <code class="inline">financeiro.py</code> muda. Nada no grafo muda. Acrescentamos um segundo ponto de entrada — irmão do <code class="inline">main.py</code> — e um JSON para o Cursor achar o processo.</p>
+
+  <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px;">
+    <table class="tbl">
+      <thead><tr><th>#</th><th>O quê</th><th>Arquivo</th></tr></thead>
+      <tbody>
+        <tr class="sep-a"><td>1</td><td>Instalar o SDK MCP (v2)</td><td>terminal: <code>pip install "mcp[cli]"</code></td></tr>
+        <tr class="sep-a"><td>2</td><td>Criar o servidor (casca sobre as tools)</td><td><code>app/mcp_server.py</code> — <strong>arquivo novo</strong></td></tr>
+        <tr class="sep-b"><td>3</td><td>Apontar o Cursor para o processo</td><td><code>.cursor/mcp.json</code> — <strong>arquivo novo</strong></td></tr>
+        <tr class="sep-c"><td>4</td><td>Testar no Cursor (Agent) e no Cline</td><td>nenhum arquivo</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="g2">
+    <div class="card">
+      <h4 style="font-family:'Syne',sans-serif;font-size:.88rem;color:var(--cyan);margin-bottom:8px;">main.py</h4>
+      <p style="font-size:.82rem;color:var(--muted);line-height:1.6;">Expõe o Assessor por <strong style="color:var(--text)">HTTP</strong>. Cliente: o navegador.</p>
+    </div>
+    <div class="card">
+      <h4 style="font-family:'Syne',sans-serif;font-size:.88rem;color:var(--green);margin-bottom:8px;">mcp_server.py</h4>
+      <p style="font-size:.82rem;color:var(--muted);line-height:1.6;">Expõe as tools por <strong style="color:var(--text)">MCP / stdio</strong>. Cliente: outro agente.</p>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ─── 12: PASSO 1 INSTALL ─── -->
+<div class="slide" data-title="Passo 1 — instalar o SDK">
+<div class="slide-inner slide-scroll">
+  <div class="bloco-mark bl-a">bloco A · instalação</div>
+  <div class="step-marker">
+    <div class="step-num">1</div>
+    <div class="step-meta">
+      <div class="step-file">pip install "mcp[cli]"</div>
+      <div class="step-obj">SDK Python — usamos a v2.2 (MCPServer, não FastMCP)</div>
+    </div>
+  </div>
+  <p class="lead">O extra <code class="inline">[cli]</code> traz o binário <code class="inline">mcp</code>. O que importa para nós é o pacote importável. Instalem no <strong style="color:var(--text)">mesmo Python</strong> que roda o Assessor.</p>
+
+  <div class="code-wrap">
+    <div class="code-header" onclick="toggleCode(this)">
+      <span class="fname">terminal</span>
+      <div class="code-right"><span class="lbadge">uma linha</span><button class="copy-btn" onclick="copyCode(event, this)">Copiar</button><span class="code-toggle-btn">Clique para ver</span></div>
+    </div>
+    <div class="code">pip install "mcp[cli]"
+python -c "from mcp.server.mcpserver import MCPServer; print('ok')"
+</div>
+  </div>
+
+  <div class="callout co-err">
+    <div class="ct">Armadilha dos tutoriais</div>
+    <p>A maior parte dos blogs ainda ensina <code>from mcp.server.fastmcp import FastMCP</code>. Isso é a <strong style="color:var(--text)">v1</strong>. Na v2 o nome virou <code>MCPServer</code> e o import é <code>from mcp.server.mcpserver import MCPServer</code>. Se copiar o tutorial, o erro é explícito e aponta o guia de migração. Nesta disciplina seguimos a v2 — é o que o <code>pip</code> instala hoje.</p>
+  </div>
+  <div class="callout co-warn">
+    <div class="ct">Python 3.14</div>
+    <p>Pode aparecer um aviso do <code>langchain_core</code> sobre Pydantic v1. Vai para o <strong style="color:var(--text)">stderr</strong>, não quebra o protocolo. Ignorem no log do MCP.</p>
+  </div>
+</div>
+</div>
+
+<!-- ─── 13: PASSO 2 ARQUIVO ─── -->
+<div class="slide" data-title="Passo 2 — criar mcp_server.py">
+<div class="slide-inner slide-scroll">
+  <div class="bloco-mark bl-a">bloco A · servidor</div>
+  <div class="step-marker">
+    <div class="step-num">2</div>
+    <div class="step-meta">
+      <div class="step-file">app/mcp_server.py</div>
+      <div class="step-obj">arquivo novo — segundo ponto de entrada do projeto</div>
+    </div>
+  </div>
+  <p class="lead">O arquivo tem três blocos: ajustar o <code class="inline">sys.path</code> (o Cursor não inicia o processo de dentro da pasta do projeto), criar o <code class="inline">MCPServer</code>, e registrar cada tool como uma <strong style="color:var(--text)">casca</strong> que chama a tool LangChain com <code class="inline">.invoke()</code>.</p>
+
+  <div class="code-wrap">
+    <div class="code-header" onclick="toggleCode(this)">
+      <span class="fname">app/mcp_server.py — cabeçalho e servidor</span>
+      <div class="code-right"><span class="lbadge">estrutura</span><button class="copy-btn" onclick="copyCode(event, this)">Copiar</button><span class="code-toggle-btn">Clique para ver</span></div>
+    </div>
+    <div class="code"><span class="k">import</span> sys
+<span class="k">from</span> pathlib <span class="k">import</span> Path
+<span class="k">from</span> typing <span class="k">import</span> Annotated, Any, Optional
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+<span class="k">if</span> str(BASE_DIR) <span class="k">not in</span> sys.path:
+    sys.path.insert(<span class="o">0</span>, str(BASE_DIR))
+
+<span class="k">from</span> mcp.server.mcpserver <span class="k">import</span> MCPServer
+<span class="k">from</span> mcp.types <span class="k">import</span> ToolAnnotations
+<span class="k">from</span> pydantic <span class="k">import</span> Field
+
+<span class="k">from</span> app.tools.financeiro <span class="k">import</span> (
+    add_transaction <span class="k">as</span> _add_transaction,
+    daily_balance <span class="k">as</span> _daily_balance,
+    query_transactions <span class="k">as</span> _query_transactions,
+    total_balance <span class="k">as</span> _total_balance,
+    update_transaction <span class="k">as</span> _update_transaction,
+)
+
+mcp = MCPServer(
+    name=<span class="s">"assessor-financeiro"</span>,
+    version=<span class="s">"1.0.0"</span>,
+    instructions=<span class="s">"Ferramentas financeiras do Assessor.AI..."</span>,
+)
+
+LEITURA = ToolAnnotations(readOnlyHint=<span class="k">True</span>)
+ESCRITA = ToolAnnotations(readOnlyHint=<span class="k">False</span>, destructiveHint=<span class="k">False</span>)
+</div>
+  </div>
+
+  <div class="callout co-info">
+    <div class="ct">Por que o sys.path</div>
+    <p>O cliente MCP executa <code>python app/mcp_server.py</code> com cwd qualquer. Sem colocar a raiz do projeto no <code>sys.path</code>, o <code>from app.tools.financeiro import ...</code> quebra. É o mesmo truque de “rodar o módulo como script”.</p>
+  </div>
+</div>
+</div>
+
+<!-- ─── 14: CASCA ─── -->
+<div class="slide" data-title="A casca que chama a tool">
+<div class="slide-inner slide-scroll">
+  <div class="bloco-mark bl-a">bloco A · servidor</div>
+  <h2 class="sec-title">A tool MCP é uma <span style="color:var(--cyan)">casca</span></h2>
+  <p class="lead">Não reescrevemos o SQL. A função MCP declara o contrato (tipos + descrições para o modelo) e despacha para a tool que o LangChain já conhece. <code class="inline">.invoke({...})</code> é o jeito oficial de chamar uma <code class="inline">@tool</code> como função Python.</p>
+
+  <div class="code-wrap">
+    <div class="code-header" onclick="toggleCode(this)">
+      <span class="fname">app/mcp_server.py — total_balance e add_transaction (recorte)</span>
+      <div class="code-right"><span class="lbadge">ideia central</span><button class="copy-btn" onclick="copyCode(event, this)">Copiar</button><span class="code-toggle-btn">Clique para ver</span></div>
+    </div>
+    <div class="code">@mcp.tool(
+    name=<span class="s">"total_balance"</span>,
+    title=<span class="s">"Saldo total"</span>,
+    description=<span class="s">"Saldo de todo o histórico: receitas menos despesas."</span>,
+    annotations=LEITURA,
+)
+<span class="k">def</span> <span class="h">total_balance</span>() -&gt; dict[str, Any]:
+    <span class="k">return</span> _total_balance.invoke({})
+
+
+@mcp.tool(
+    name=<span class="s">"add_transaction"</span>,
+    title=<span class="s">"Registrar transação"</span>,
+    description=<span class="s">"Registra uma transação na tabela transactions."</span>,
+    annotations=ESCRITA,
+)
+<span class="k">def</span> <span class="h">add_transaction</span>(
+    amount: Annotated[float, Field(description=<span class="s">"Valor (sempre positivo)."</span>)],
+    source_text: Annotated[str, Field(description=<span class="s">"Texto original."</span>)],
+    type_name: Annotated[Optional[str], Field(description=<span class="s">"INCOME | EXPENSES | TRANSFER"</span>)] = <span class="k">None</span>,
+    category_name: Annotated[Optional[str], Field(description=<span class="s">"Categoria em pt-BR."</span>)] = <span class="k">None</span>,
+    ...
+) -&gt; dict[str, Any]:
+    <span class="k">return</span> _add_transaction.invoke({
+        <span class="s">"amount"</span>: amount,
+        <span class="s">"source_text"</span>: source_text,
+        <span class="s">"type_name"</span>: type_name,
+        <span class="s">"category_name"</span>: category_name,
+        ...
+    })
+</div>
+  </div>
+
+  <div class="callout co-ok">
+    <div class="ct">O argumento da aula, em uma linha</div>
+    <p>MCP não é uma nova implementação. É uma <strong style="color:var(--text)">nova porta</strong> para a mesma capacidade. Se o INSERT mudar amanhã, vocês mexem em <code>financeiro.py</code> uma vez — o servidor MCP e o grafo herdam juntos.</p>
+  </div>
+</div>
+</div>
+
+<!-- ─── 15: CONTRATO ─── -->
+<div class="slide" data-title="O contrato não é espelho">
+<div class="slide-inner slide-scroll">
+  <div class="bloco-mark bl-a">bloco A · servidor</div>
+  <h2 class="sec-title">O contrato MCP <span style="color:var(--orange)">não é espelho</span> da tool interna</h2>
+  <p class="lead">A tool LangChain aceita <code class="inline">type_id</code> e <code class="inline">category_id</code>. Um cliente de fora não tem como saber que <code class="inline">1 = INCOME</code> ou qual é o id de “comida”. No servidor MCP publicamos <strong style="color:var(--text)">os nomes</strong> e deixamos a tool interna resolver os ids. Escolher o que expor é desenhar API — vocês já fizeram isso no FastAPI com Pydantic.</p>
+
+  <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px;">
+    <table class="tbl">
+      <thead><tr><th>Tool</th><th>Leitura / escrita</th><th>Papel</th></tr></thead>
+      <tbody>
+        <tr><td><code>query_transactions</code></td><td>leitura</td><td>Lista com filtros de texto, tipo e data (São Paulo)</td></tr>
+        <tr><td><code>total_balance</code></td><td>leitura</td><td>Receitas − despesas no histórico</td></tr>
+        <tr><td><code>daily_balance</code></td><td>leitura</td><td>Saldo de um dia YYYY-MM-DD</td></tr>
+        <tr><td><code>add_transaction</code></td><td>escrita</td><td>INSERT — pede confirmação no Cursor</td></tr>
+        <tr><td><code>update_transaction</code></td><td>escrita</td><td>UPDATE por id ou por texto+data</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout co-info">
+    <div class="ct">readOnlyHint</div>
+    <p>As anotações <code>readOnlyHint=True</code> e <code>destructiveHint=False</code> viajam no protocolo. O Cursor usa isso para decidir o que pode rodar sozinho e o que pede o seu “Allow”. Não é segurança de verdade (o cliente pode ignorar), mas é o equivalente a um método GET versus POST no HTTP: uma dica de intenção.</p>
+  </div>
+</div>
+</div>
+
+<!-- ─── 16: MAIN STDIO ─── -->
+<div class="slide" data-title="Ponto de entrada stdio">
+<div class="slide-inner slide-scroll">
+  <div class="bloco-mark bl-a">bloco A · servidor</div>
+  <h2 class="sec-title">O processo fica <span style="color:var(--cyan)">esperando</span> no stdio</h2>
+  <p class="lead">Não chamamos <code class="inline">uvicorn</code>. O cliente MCP é quem inicia o Python. O <code class="inline">mcp.run(transport="stdio")</code> entra num loop: lê JSON da entrada, executa, escreve JSON na saída.</p>
+
+  <div class="code-wrap">
+    <div class="code-header" onclick="toggleCode(this)">
+      <span class="fname">app/mcp_server.py — if __name__</span>
+      <div class="code-right"><span class="lbadge">boot</span><button class="copy-btn" onclick="copyCode(event, this)">Copiar</button><span class="code-toggle-btn">Clique para ver</span></div>
+    </div>
+    <div class="code"><span class="k">if</span> __name__ == <span class="s">"__main__"</span>:
+    <span class="k">from</span> app.config <span class="k">import</span> DATABASE_URL
+
+    <span class="k">if not</span> DATABASE_URL:
+        print(<span class="s">"[assessor-financeiro] DATABASE_URL ausente no .env"</span>, file=sys.stderr)
+
+    mcp.run(transport=<span class="s">"stdio"</span>)
+</div>
+  </div>
+
+  <div class="callout co-warn">
+    <div class="ct">Não rode isso “para ver se abre uma janela”</div>
+    <p>Se você executar <code>python app/mcp_server.py</code> no terminal, o processo trava esperando JSON-RPC. Parece hung. É o comportamento certo. Quem fala com ele é o Cursor, não você digitando.</p>
+  </div>
+  <div class="callout co-ok">
+    <div class="ct">O .env já é lido</div>
+    <p>Como importamos <code>app.tools.financeiro</code>, o <code>app.config</code> carrega o <code>.env</code> uma vez — a mesma regra da Etapa 2. Não coloquem <code>load_dotenv()</code> de novo no servidor MCP.</p>
+  </div>
+</div>
+</div>
+
+<!-- ─── 17: MCP.JSON ─── -->
+<div class="slide" data-title="Passo 3 — mcp.json">
+<div class="slide-inner slide-scroll">
+  <div class="bloco-mark bl-b">bloco B · cliente Cursor</div>
+  <div class="step-marker">
+    <div class="step-num b">3</div>
+    <div class="step-meta">
+      <div class="step-file">.cursor/mcp.json</div>
+      <div class="step-obj">o Cursor lê este arquivo na raiz do projeto</div>
+    </div>
+  </div>
+  <p class="lead">É o equivalente a dizer ao navegador “a API está em localhost:8000”. Aqui dizemos: “o servidor se chama <code class="inline">assessor-financeiro</code>, o comando é este Python, o script é este arquivo”.</p>
+
+  <div class="code-wrap">
+    <div class="code-header" onclick="toggleCode(this)">
+      <span class="fname">.cursor/mcp.json</span>
+      <div class="code-right"><span class="lbadge">ajuste os caminhos</span><button class="copy-btn" onclick="copyCode(event, this)">Copiar</button><span class="code-toggle-btn">Clique para ver</span></div>
+    </div>
+    <div class="code">{
+  <span class="s">"mcpServers"</span>: {
+    <span class="s">"assessor-financeiro"</span>: {
+      <span class="s">"command"</span>: <span class="s">"C:\\Program Files\\Python314\\python.exe"</span>,
+      <span class="s">"args"</span>: [
+        <span class="s">"...\\migracao_fastAPI\\app\\mcp_server.py"</span>
+      ]
+    }
+  }
+}
+</div>
+  </div>
+
+  <div class="callout co-warn">
+    <div class="ct">Caminho absoluto, da SUA máquina</div>
+    <p>O JSON do professor não vai funcionar no notebook do aluno: o Python e a pasta são outros. Cada um cola o resultado de <code>python -c "import sys; print(sys.executable)"</code> e o caminho completo até <code>mcp_server.py</code>. No Windows, a barra é <code>\\</code> dentro de string JSON.</p>
+  </div>
+</div>
+</div>
+
+<!-- ─── 18: TESTE CURSOR ─── -->
+<div class="slide" data-title="Teste no Cursor">
+<div class="slide-inner slide-scroll">
+  <div class="bloco-mark bl-c">bloco C · teste</div>
+  <div class="step-marker">
+    <div class="step-num c">4</div>
+    <div class="step-meta">
+      <div class="step-file">Cursor · Agent mode</div>
+      <div class="step-obj">o cliente que vocês já usam todos os dias</div>
+    </div>
+  </div>
+
+  <div class="test-box">
+    <div class="tt">▸ Antes de perguntar</div>
+    <ol>
+      <li>Postgres no ar (<code>docker ps</code> deve mostrar o container <code>pg</code> ou o serviço local na 5432).</li>
+      <li><code>Ctrl+Shift+J</code> → <strong>MCP &amp; Integrations</strong>. O <code>assessor-financeiro</code> deve listar 5 tools. Se não, Refresh ou Reload Window.</li>
+      <li>O chat precisa estar em <strong>Agent</strong>. Em Ask as tools MCP <span class="nao">não executam</span>.</li>
+    </ol>
+  </div>
+
+  <div class="test-box">
+    <div class="tt">▸ Pergunte isto, nesta ordem</div>
+    <table class="qa">
+      <thead><tr><th>#</th><th>O que você pergunta</th><th>O que deve acontecer</th></tr></thead>
+      <tbody>
+        <tr><td class="n">1</td><td><span class="voce">qual é o meu saldo total?</span></td><td><span class="ok">Chama <code>total_balance</code></span> — leitura, sem pedir confirmação.</td></tr>
+        <tr><td class="n">2</td><td><span class="voce">lista meus últimos 5 lançamentos</span></td><td><span class="ok"><code>query_transactions</code></span> com <code>limit: 5</code>.</td></tr>
+        <tr><td class="n">3</td><td><span class="voce">quanto eu gastei com férias?</span></td><td><span class="ok">Filtro de texto</span> em <code>query_transactions</code>.</td></tr>
+        <tr><td class="n">4</td><td><span class="voce">registra um gasto de 30 reais no mercado</span></td><td><span class="ok"><code>add_transaction</code></span> — o Cursor pede Allow. Conferir no banco depois.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout co-ok">
+    <div class="ct">O que você acabou de provar</div>
+    <p>O Cursor <strong style="color:var(--text)">não tem</strong> <code>DATABASE_URL</code>, não sabe o schema, não importou LangChain. Ele só falou o protocolo. Se o saldo bate com o do chat do Assessor, as duas portas olham para o mesmo Postgres.</p>
+  </div>
+  <div class="callout co-warn">
+    <div class="ct">Se der erro</div>
+    <p><strong style="color:var(--text)">View → Output → MCP Logs.</strong> Connection refused = Postgres parado. ModuleNotFoundError = <code>sys.path</code> ou Python errado no JSON. FastMCP / ModuleNotFoundError de <code>mcp.server.fastmcp</code> = SDK v2 com código v1.</p>
+  </div>
+</div>
+</div>
+
+<!-- ─── 19: TESTE CLINE ─── -->
+<div class="slide" data-title="Teste no Cline">
+<div class="slide-inner slide-scroll">
+  <div class="bloco-mark bl-c">bloco C · teste</div>
+  <h2 class="sec-title">O mesmo servidor, <span style="color:var(--purple)">outro cliente</span></h2>
+  <p class="lead">Este é o slide que fecha o argumento M + N. Zero mudança em <code class="inline">mcp_server.py</code>. Só outro host lendo um JSON no mesmo formato.</p>
+
+  <div class="test-box">
+    <div class="tt">▸ Instalar e configurar</div>
+    <ol>
+      <li>No VS Code: <code>code --install-extension saoudrizwan.claude-dev</code> (a extensão se chama Cline).</li>
+      <li>Abra o Cline → ícone de MCP Servers → <strong>Configure MCP Servers</strong>.</li>
+      <li>O arquivo fica em <code>%APPDATA%\Code\User\globalStorage\saoudrizwan.claude-dev\settings\cline_mcp_settings.json</code>.</li>
+      <li>Cole o mesmo conteúdo do <code>.cursor/mcp.json</code>. Salve. Habilite o servidor na lista.</li>
+      <li>Configure um provedor de LLM no Cline (Ollama, se for o da disciplina — o modelo precisa saber fazer tool calling).</li>
+    </ol>
+  </div>
+
+  <div class="callout co-ok">
+    <div class="ct">A frase do quadro</div>
+    <p>Um servidor. Dois clientes. Nenhuma linha nova no SQL. Isso é o protocolo trabalhando — não “mais uma lib Python”.</p>
+  </div>
+  <div class="callout co-info">
+    <div class="ct">Cline não é obrigatório para passar na etapa</div>
+    <p>O checkpoint mínimo é o Cursor. O Cline é a prova extra de interoperabilidade. Se a máquina da escola só tiver Cursor, a ideia ainda está inteira — o professor demonstra o segundo cliente no projetor.</p>
+  </div>
+</div>
+</div>
+
+<!-- ─── 20: O QUE NÃO MUDAMOS ─── -->
+<div class="slide" data-title="O que não foi mexido">
+<div class="slide-inner slide-scroll">
+  <span class="gtag">síntese</span>
+  <h2 class="sec-title">O que <span style="color:var(--green)">entrou</span> e o que <span style="color:var(--muted)">ficou</span></h2>
+  <p class="lead">Separação de responsabilidades, de novo: a inteligência do domínio não sabe que existe MCP, assim como não sabia que existia HTTP.</p>
+
+  <div class="yn" style="margin-bottom:18px;">
+    <div class="yn-col yn-yes">
+      <h4 style="color:var(--green)">Arquivos novos</h4>
+      <ul>
+        <li><code style="color:var(--text)">app/mcp_server.py</code></li>
+        <li><code style="color:var(--text)">.cursor/mcp.json</code></li>
+        <li>pacote <code>mcp</code> no Python</li>
+      </ul>
+    </div>
+    <div class="yn-col yn-no">
+      <h4 style="color:var(--orange)">Intocados de propósito</h4>
+      <ul>
+        <li><code>app/tools/financeiro.py</code> — o SQL</li>
+        <li><code>app/graph.py</code> — o agente</li>
+        <li><code>app/main.py</code> — a API HTTP</li>
+        <li>frontend, guardrail, memória</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout co-ok">
+    <div class="ct">Camadas, de fora para dentro</div>
+    <p>Apresentação (Cursor) → protocolo (MCP) → domínio (<code>@tool</code>) → infraestrutura (Postgres). A regra da migração FastAPI continua valendo: as camadas de fora chamam as de dentro, nunca o contrário. O servidor MCP importa a tool; a tool não sabe que o MCP existe.</p>
+  </div>
+</div>
+</div>
+
+<!-- ─── 21: CONFERÊNCIA ─── -->
+<div class="slide" data-title="Conferência final">
+<div class="slide-inner slide-scroll">
+  <span class="gtag">checkpoint</span>
+  <h2 class="sec-title">Conferência <span style="color:var(--green)">final</span></h2>
+  <p class="lead">Marque cada item. Se algum não bater, volte ao passo correspondente antes de seguir.</p>
+
+  <div class="final-check" id="final-checklist">
+    <div class="fc-item"><div class="fc-check">✓</div><div class="fc-text">1 · Sei explicar MCP em uma frase (protocolo, não lib)</div></div>
+    <div class="fc-item"><div class="fc-check">✓</div><div class="fc-text">2 · Sei quem criou, quando abriu, e que hoje é da AAIF / Linux Foundation</div></div>
+    <div class="fc-item"><div class="fc-check">✓</div><div class="fc-text">3 · Distingo cliente, servidor e host</div></div>
+    <div class="fc-item"><div class="fc-check">✓</div><div class="fc-text">4 · Distingo API REST, @tool e MCP — e quando cada um vale</div></div>
+    <div class="fc-item"><div class="fc-check">✓</div><div class="fc-text">5 · mcp instalado (v2 / MCPServer)</div></div>
+    <div class="fc-item"><div class="fc-check">✓</div><div class="fc-text">6 · app/mcp_server.py criado, tools via .invoke()</div></div>
+    <div class="fc-item"><div class="fc-check">✓</div><div class="fc-text">7 · financeiro.py intocado</div></div>
+    <div class="fc-item"><div class="fc-check">✓</div><div class="fc-text">8 · .cursor/mcp.json com o Python da minha máquina</div></div>
+    <div class="fc-item"><div class="fc-check">✓</div><div class="fc-text">9 · Cursor em Agent lista as 5 tools</div></div>
+    <div class="fc-item"><div class="fc-check">✓</div><div class="fc-text">10 · total_balance no Cursor bate com o chat do Assessor</div></div>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="bridge">
+    <h3 class="slide-h3" style="margin-bottom:10px;">🔮 Próxima etapa — o Assessor como cliente</h3>
+    <p style="color:var(--muted);font-size:.88rem;line-height:1.7;margin-bottom:14px;">Vocês <em>produziram</em> o protocolo. Na sequência, o grafo vai <em>consumir</em> um MCP: primeiro a consulta de agenda no mesmo espírito, depois um servidor de outra empresa (Google Calendar), cada aluno na conta pessoal.</p>
+    <div class="next-pills">
+      <div class="next-pill">Assessor como cliente</div>
+      <div class="next-pill">consulta de eventos</div>
+      <div class="next-pill">Google Calendar MCP</div>
+    </div>
+  </div>
+</div>
+</div>
+
+</div>
+
+<script>
+// ══════════════════════════ BG CANVAS ══════════════════════════
+const bgCanvas = document.getElementById('bg');
+const bgCtx = bgCanvas.getContext('2d');
+let BW, BH, nodes = [];
+function resizeBg() { BW = bgCanvas.width = window.innerWidth; BH = bgCanvas.height = window.innerHeight; }
+resizeBg(); window.addEventListener('resize', () => { resizeBg(); initNodes(); });
+function initNodes() {
+  nodes = [];
+  const n = Math.floor((BW * BH) / 18000);
+  for (let i = 0; i < n; i++) nodes.push({ x:Math.random()*BW, y:Math.random()*BH, vx:(Math.random()-.5)*.4, vy:(Math.random()-.5)*.4, r:Math.random()*2+1 });
+}
+initNodes();
+function drawBg() {
+  bgCtx.clearRect(0, 0, BW, BH);
+  nodes.forEach(n => { n.x += n.vx; n.y += n.vy; if(n.x<0||n.x>BW)n.vx*=-1; if(n.y<0||n.y>BH)n.vy*=-1; });
+  for (let i = 0; i < nodes.length; i++) for (let j = i+1; j < nodes.length; j++) {
+    const dx=nodes[i].x-nodes[j].x, dy=nodes[i].y-nodes[j].y, d=Math.sqrt(dx*dx+dy*dy);
+    if (d < 120) { bgCtx.beginPath(); bgCtx.moveTo(nodes[i].x,nodes[i].y); bgCtx.lineTo(nodes[j].x,nodes[j].y); bgCtx.strokeStyle=`rgba(124,58,237,${.15*(1-d/120)})`; bgCtx.lineWidth=.5; bgCtx.stroke(); }
+  }
+  nodes.forEach(n => { bgCtx.beginPath(); bgCtx.arc(n.x,n.y,n.r,0,Math.PI*2); bgCtx.fillStyle='rgba(0,229,255,.5)'; bgCtx.fill(); });
+  requestAnimationFrame(drawBg);
+}
+drawBg();
+
+// ══════════════════════════ SLIDE ENGINE ══════════════════════════
+const slideEls = Array.from(document.querySelectorAll('.slide'));
+const TOTAL = slideEls.length;
+let current = 0;
+let maxReached = 0;
+
+const progressBar = document.getElementById('progress-bar');
+const counter     = document.getElementById('slide-counter');
+const titleBar    = document.getElementById('slide-title-bar');
+const navPrev     = document.getElementById('nav-prev');
+const navNext     = document.getElementById('nav-next');
+const dotsEl      = document.getElementById('dots');
+
+slideEls.forEach((_, i) => {
+  const d = document.createElement('div'); d.className = 'dot'; d.onclick = () => goTo(i);
+  dotsEl.appendChild(d);
+});
+
+function goTo(n) {
+  if (n < 0 || n >= TOTAL) return;
+  slideEls.forEach((s, i) => {
+    s.classList.remove('active', 'prev');
+    if (i < n) s.classList.add('prev');
+  });
+  slideEls[n].classList.add('active');
+  current = n;
+  if (n > maxReached) maxReached = n;
+  updateUI();
+  onSlideEnter(current);
+}
+
+function updateUI() {
+  progressBar.style.width = ((current + 1) / TOTAL * 100) + '%';
+  counter.textContent = `${current + 1} / ${TOTAL}`;
+  titleBar.textContent = slideEls[current].dataset.title || '';
+  navPrev.classList.toggle('disabled', current === 0);
+  navNext.classList.toggle('disabled', current === TOTAL - 1);
+  document.querySelectorAll('.dot').forEach((d,i) => {
+    d.classList.toggle('active', i === current);
+    d.classList.toggle('done', i < current);
+  });
+}
+
+navPrev.onclick = () => goTo(current - 1);
+navNext.onclick = () => goTo(current + 1);
+document.addEventListener('keydown', e => {
+  if (e.target.closest('.code')) return;
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') goTo(current + 1);
+  if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   goTo(current - 1);
+});
+requestAnimationFrame(() => goTo(0));
+
+function onSlideEnter(n) {
+  const title = slideEls[n].dataset.title;
+  if (title === 'Conferência final') {
+    const el = document.getElementById('final-checklist');
+    el.classList.remove('play');
+    void el.offsetWidth;
+    el.classList.add('play');
+  }
+}
+
+// ══════════════════════════ CÓDIGO ESCONDIDO ══════════════════════════
+function toggleCode(header) {
+  const wrap = header.parentElement;
+  const open = wrap.classList.toggle('open');
+  const btn = header.querySelector('.code-toggle-btn');
+  if (btn) btn.textContent = open ? 'Ocultar' : 'Clique para ver';
+}
+
+// ══════════════════════════ COPIAR CÓDIGO ══════════════════════════
+function copyCode(evento, botao) {
+  evento.stopPropagation();
+  const wrap = botao.closest('.code-wrap');
+  const texto = wrap.querySelector('.code').textContent;
+
+  const feedback = (ok) => {
+    botao.textContent = ok ? '✓ Copiado' : 'Falhou';
+    botao.classList.toggle('done', ok);
+    setTimeout(() => { botao.textContent = 'Copiar'; botao.classList.remove('done'); }, 1800);
+  };
+
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(texto).then(() => feedback(true), () => feedback(false));
+  } else {
+    const ta = document.createElement('textarea');
+    ta.value = texto;
+    ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    feedback(ok);
+  }
+}
+</script>
+</body>
+</html>

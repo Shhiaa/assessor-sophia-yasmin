@@ -1,0 +1,17 @@
+langchain
+langchain-google-genai
+langchain-groq
+langchain-community
+langchain-text-splitters
+langgraph
+faiss-cpu
+psycopg2-binary
+python-dotenv
+pydantic
+pypdf
+pymongo
+fastapi
+uvicorn
+qdrant-client
+mcp[cli]
+tzdata

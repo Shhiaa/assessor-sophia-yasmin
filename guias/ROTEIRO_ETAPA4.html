@@ -1,0 +1,1638 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Etapa 4 — Busca Semântica com Qdrant</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #050a14;
+  --cyan: #00e5ff;
+  --green: #00ff88;
+  --orange: #ff6b35;
+  --purple: #7c3aed;
+  --pink: #f472b6;
+  --text: #e8f4f8;
+  --muted: #7fa8c0;
+  --card: rgba(255,255,255,0.04);
+  --border: rgba(0,229,255,0.15);
+}
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+html, body { width:100%; height:100%; overflow:hidden; background:var(--bg); color:var(--text); font-family:'IBM Plex Sans',sans-serif; }
+
+#bg { position:fixed; inset:0; z-index:0; opacity:.3; pointer-events:none; }
+
+#progress-bar {
+  position:fixed; top:0; left:0; height:3px; z-index:200;
+  background:linear-gradient(90deg, var(--cyan), var(--purple));
+  transition: width .4s ease;
+}
+
+#topbar {
+  position:fixed; top:0; left:0; right:0; height:52px; z-index:150;
+  background:rgba(5,10,20,.88); backdrop-filter:blur(14px);
+  border-bottom:1px solid var(--border);
+  display:flex; align-items:center; justify-content:space-between; padding:0 32px;
+}
+.tb-label { font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--cyan); letter-spacing:2px; text-transform:uppercase; }
+.tb-counter { font-family:'IBM Plex Mono',monospace; font-size:13px; color:var(--muted); }
+.tb-title { font-family:'IBM Plex Sans',sans-serif; font-size:13px; color:var(--muted); max-width:360px; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+#slides { position:fixed; inset:0; z-index:1; }
+
+.slide {
+  position:absolute; inset:0;
+  display:flex; flex-direction:column; justify-content:flex-start; align-items:center;
+  padding:72px 60px 80px;
+  opacity:0; pointer-events:none;
+  transition: opacity .5s ease, transform .5s ease;
+  transform: translateX(60px);
+  overflow-y: auto;
+}
+.slide.active { opacity:1; pointer-events:all; transform:translateX(0); }
+.slide.prev   { opacity:0; pointer-events:none; transform:translateX(-60px); }
+.slide-inner { width:100%; max-width:1080px; margin:auto 0; }
+
+#nav-prev, #nav-next {
+  position:fixed; top:50%; z-index:200;
+  transform:translateY(-50%);
+  width:48px; height:48px; border-radius:50%;
+  border:1px solid var(--border); background:rgba(5,10,20,.7);
+  backdrop-filter:blur(8px); cursor:pointer;
+  display:flex; align-items:center; justify-content:center;
+  font-size:20px; color:var(--cyan);
+  transition:all .2s; user-select:none;
+}
+#nav-prev { left:16px; }
+#nav-next { right:16px; }
+#nav-prev:hover, #nav-next:hover { background:rgba(0,229,255,.12); border-color:var(--cyan); }
+#nav-prev.disabled, #nav-next.disabled { opacity:.25; pointer-events:none; }
+
+#dots { position:fixed; bottom:18px; left:50%; transform:translateX(-50%); display:flex; gap:6px; z-index:200; flex-wrap:wrap; max-width:70%; justify-content:center; }
+.dot { width:7px; height:7px; border-radius:50%; background:var(--muted); opacity:.4; cursor:pointer; transition:all .3s; }
+.dot.active { background:var(--cyan); opacity:1; transform:scale(1.3); }
+.dot.done { background:var(--green); opacity:.8; }
+
+.tag  { font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--cyan);   letter-spacing:3px; text-transform:uppercase; margin-bottom:10px; display:block; }
+.gtag { font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--green);  letter-spacing:3px; text-transform:uppercase; margin-bottom:10px; display:block; }
+.ptag { font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--purple); letter-spacing:3px; text-transform:uppercase; margin-bottom:10px; display:block; }
+.otag { font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--orange); letter-spacing:3px; text-transform:uppercase; margin-bottom:10px; display:block; }
+
+h1.hero-title { font-family:'Syne',sans-serif; font-size:clamp(2.2rem,4.6vw,4rem); font-weight:800; line-height:1.08; margin-bottom:20px; }
+h2.sec-title  { font-family:'Syne',sans-serif; font-size:clamp(1.4rem,3vw,2.3rem); font-weight:800; line-height:1.18; margin-bottom:12px; }
+h3.slide-h3   { font-family:'Syne',sans-serif; font-size:1.15rem; font-weight:700; margin-bottom:14px; }
+p.lead { color:var(--muted); font-size:.98rem; line-height:1.7; margin-bottom:22px; }
+
+.badge {
+  display:inline-flex; align-items:center; gap:8px;
+  background:rgba(0,229,255,.08); border:1px solid var(--border);
+  border-radius:20px; padding:6px 16px;
+  font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--cyan); letter-spacing:1px;
+  margin-bottom:26px; width:fit-content;
+}
+.badge::before { content:''; width:7px; height:7px; background:var(--green); border-radius:50%; animation:pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(1.5)} }
+
+.hero-q {
+  background:linear-gradient(135deg,rgba(0,229,255,.06),rgba(124,58,237,.06));
+  border:1px solid rgba(0,229,255,.2); border-left:4px solid var(--cyan);
+  border-radius:12px; padding:20px 26px; font-size:1.02rem; color:var(--text);
+  max-width:780px; margin-top:6px;
+  animation:fadeUp .8s ease both .3s;
+}
+@keyframes fadeUp { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:translateY(0)} }
+
+.card { background:var(--card); border:1px solid var(--border); border-radius:16px; padding:22px; }
+.g2 { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+.g3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; }
+@media(max-width:680px){.g2,.g3{grid-template-columns:1fr}}
+
+.pill-row { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:24px; }
+.pill { background:rgba(0,255,136,.07); border:1px solid rgba(0,255,136,.25); border-radius:20px; padding:5px 14px; font-size:12px; color:var(--green); font-family:'IBM Plex Mono',monospace; }
+
+.bridge { background:linear-gradient(135deg,rgba(0,229,255,.05),rgba(124,58,237,.05)); border:1px solid rgba(0,229,255,.2); border-radius:14px; padding:22px 26px; }
+
+/* ═══ MARCADOR DE BLOCO ═══ */
+.bloco-mark {
+  display:inline-flex; align-items:center; gap:10px; margin-bottom:14px;
+  font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:2.5px; text-transform:uppercase;
+  border-radius:20px; padding:5px 15px;
+}
+.bl-a { background:rgba(0,229,255,.09);  border:1px solid rgba(0,229,255,.35);  color:var(--cyan); }
+.bl-b { background:rgba(255,107,53,.09); border:1px solid rgba(255,107,53,.35); color:var(--orange); }
+.bl-c { background:rgba(0,255,136,.08);  border:1px solid rgba(0,255,136,.32);  color:var(--green); }
+
+/* ═══ TABELA ═══ */
+.tbl { width:100%; border-collapse:collapse; font-size:.82rem; }
+.tbl th { text-align:left; font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:1.5px; text-transform:uppercase; color:var(--cyan); padding:9px 12px; border-bottom:1px solid var(--border); white-space:nowrap; }
+.tbl td { padding:10px 12px; border-bottom:1px solid rgba(255,255,255,.05); color:var(--muted); vertical-align:top; line-height:1.5; }
+.tbl td strong, .tbl td code { color:var(--text); }
+.tbl td code { font-family:'IBM Plex Mono',monospace; background:rgba(0,0,0,.3); padding:1px 6px; border-radius:4px; font-size:.78rem; }
+.tbl tbody tr:hover td { background:rgba(0,229,255,.03); }
+.tbl tr.sep-a td { background:rgba(0,229,255,.05); }
+.tbl tr.sep-b td { background:rgba(255,107,53,.05); }
+.tbl tr.sep-c td { background:rgba(0,255,136,.04); }
+
+/* ═══ CÓDIGO ═══ */
+.code {
+  background:rgba(0,0,0,.42); border:1px solid var(--border); border-radius:10px;
+  padding:14px 18px; font-family:'IBM Plex Mono',monospace; font-size:.74rem;
+  line-height:1.7; overflow-x:auto; white-space:pre; color:#bfe4f2;
+}
+.code .k { color:var(--pink); }
+.code .s { color:var(--green); }
+.code .c { color:var(--muted); font-style:italic; }
+.code .h { color:var(--cyan); font-weight:500; }
+.code .o { color:var(--orange); }
+.code .del { color:#ff8fa3; }
+
+.code-wrap { border:1px solid var(--border); border-radius:9px; overflow:hidden; margin-bottom:14px; transition:border-color .2s, box-shadow .2s; }
+.code-wrap.open { border-color:var(--cyan); box-shadow:0 0 0 1px rgba(0,229,255,.08); }
+.code-header { display:flex; justify-content:space-between; align-items:center; padding:9px 14px; background:rgba(0,0,0,.55); border-bottom:1px solid var(--border); cursor:pointer; user-select:none; transition:background .15s; gap:12px; }
+.code-header:hover { background:rgba(0,229,255,.06); }
+.code-header .fname { font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--cyan); }
+.code-right { display:flex; align-items:center; gap:10px; flex-shrink:0; }
+.code-header .lbadge { font-family:'IBM Plex Mono',monospace; font-size:9.5px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; }
+.code-toggle-btn {
+  font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:.5px;
+  color:var(--cyan); border:1px solid var(--border); border-radius:20px; padding:3px 11px;
+  white-space:nowrap; transition:.2s; background:rgba(0,229,255,.05);
+}
+.code-toggle-btn::before { content:'▸ '; }
+.code-wrap.open .code-toggle-btn { color:var(--bg); background:var(--green); border-color:var(--green); font-weight:600; }
+.code-wrap.open .code-toggle-btn::before { content:'▾ '; }
+.copy-btn {
+  font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:.5px;
+  color:var(--purple); border:1px solid rgba(124,58,237,.4); border-radius:20px; padding:3px 11px;
+  white-space:nowrap; transition:.2s; background:rgba(124,58,237,.08); cursor:pointer;
+  display:none;
+}
+.copy-btn:hover { background:rgba(124,58,237,.2); color:var(--pink); }
+.copy-btn.done { color:var(--bg); background:var(--green); border-color:var(--green); font-weight:600; }
+.code-wrap.open .copy-btn { display:inline-block; }
+.code-wrap .code { display:none; border:none; border-radius:0; }
+.code-wrap.open .code { display:block; animation:codeIn .28s ease; }
+@keyframes codeIn { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:translateY(0)} }
+
+/* ═══ PASSOS ═══ */
+.step-marker { display:flex; align-items:center; gap:16px; margin-bottom:18px; }
+.step-num {
+  font-family:'Syne',sans-serif; font-weight:800; font-size:1.6rem;
+  width:52px; height:52px; border-radius:14px; display:flex; align-items:center; justify-content:center;
+  background:rgba(0,229,255,.08); border:1px solid var(--border); color:var(--cyan); flex-shrink:0;
+}
+.step-num.b { background:rgba(255,107,53,.08); border-color:rgba(255,107,53,.3); color:var(--orange); }
+.step-num.c { background:rgba(0,255,136,.07); border-color:rgba(0,255,136,.3); color:var(--green); }
+.step-meta { display:flex; flex-direction:column; gap:2px; }
+.step-file { font-family:'IBM Plex Mono',monospace; font-size:.92rem; color:var(--text); }
+.step-obj { font-size:.78rem; color:var(--muted); }
+
+.callout { border-left:3px solid; border-radius:0 8px 8px 0; padding:12px 16px; margin:12px 0 0; font-size:.83rem; line-height:1.6; }
+.callout .ct { font-family:'IBM Plex Mono',monospace; font-weight:500; font-size:9.5px; text-transform:uppercase; letter-spacing:1.5px; margin-bottom:5px; }
+.callout p { margin:0; color:var(--muted); font-size:.83rem; }
+.callout p + p { margin-top:8px; }
+.callout code { font-family:'IBM Plex Mono',monospace; background:rgba(0,0,0,.3); padding:1px 6px; border-radius:4px; color:var(--text); font-size:.78rem; }
+.co-ok   { border-color:var(--green);  background:rgba(0,255,136,.05); }
+.co-ok .ct { color:var(--green); }
+.co-warn { border-color:var(--orange); background:rgba(255,107,53,.05); }
+.co-warn .ct { color:var(--orange); }
+.co-info { border-color:var(--purple); background:rgba(124,58,237,.06); }
+.co-info .ct { color:#c4b5fd; }
+.co-err  { border-color:#ff4d6d; background:rgba(255,77,109,.06); }
+.co-err .ct { color:#ff8fa3; }
+
+/* ═══ TESTES ═══ */
+.test-box { background:rgba(0,255,136,.04); border:1px solid rgba(0,255,136,.22); border-radius:12px; padding:16px 20px; margin-bottom:12px; }
+.test-box .tt { font-family:'Syne',sans-serif; font-weight:800; font-size:.88rem; color:var(--green); margin-bottom:8px; display:flex; align-items:center; gap:8px; }
+.test-box ol, .test-box ul { margin-left:18px; }
+.test-box li { font-size:.83rem; color:var(--muted); line-height:1.65; margin-bottom:4px; }
+.test-box li strong, .test-box li code { color:var(--text); }
+.test-box code { font-family:'IBM Plex Mono',monospace; background:rgba(0,0,0,.3); padding:1px 6px; border-radius:4px; font-size:.78rem; }
+.test-box p { font-size:.83rem; color:var(--muted); line-height:1.65; }
+
+/* ═══ TESTE CONVERSACIONAL (pergunta → resposta esperada) ═══ */
+.qa { width:100%; border-collapse:collapse; font-size:.82rem; margin-top:8px; }
+.qa th { text-align:left; font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:1.5px; text-transform:uppercase; color:var(--green); padding:8px 10px; border-bottom:1px solid rgba(0,255,136,.25); }
+.qa td { padding:10px; border-bottom:1px solid rgba(255,255,255,.06); color:var(--muted); vertical-align:top; line-height:1.55; font-size:.82rem; }
+.qa td.n { color:var(--green); font-family:'IBM Plex Mono',monospace; width:26px; text-align:center; }
+.qa tr:last-child td { border-bottom:none; }
+.voce {
+  color:var(--text); font-family:'IBM Plex Mono',monospace; font-size:.78rem;
+  background:rgba(0,229,255,.08); border:1px solid rgba(0,229,255,.22);
+  border-radius:6px; padding:3px 9px; display:inline-block; line-height:1.45;
+}
+.acao { color:var(--text); font-size:.8rem; }
+.qa .ok  { color:var(--green); font-weight:500; }
+.qa .nao { color:var(--orange); font-weight:500; }
+.qa code { font-family:'IBM Plex Mono',monospace; background:rgba(0,0,0,.3); padding:1px 6px; border-radius:4px; color:var(--text); font-size:.76rem; }
+
+/* ═══ CHECKLIST ANIMADA ═══ */
+.final-check { display:flex; flex-direction:column; gap:8px; margin-bottom:18px; }
+.fc-item {
+  display:flex; align-items:center; gap:12px; padding:9px 16px;
+  background:var(--card); border:1px solid var(--border); border-radius:10px;
+  opacity:0; transform:translateX(-16px);
+}
+.final-check.play .fc-item { animation:fcIn .5s ease forwards; }
+.final-check.play .fc-item:nth-child(1){animation-delay:.04s}
+.final-check.play .fc-item:nth-child(2){animation-delay:.14s}
+.final-check.play .fc-item:nth-child(3){animation-delay:.24s}
+.final-check.play .fc-item:nth-child(4){animation-delay:.34s}
+.final-check.play .fc-item:nth-child(5){animation-delay:.44s}
+.final-check.play .fc-item:nth-child(6){animation-delay:.54s}
+.final-check.play .fc-item:nth-child(7){animation-delay:.64s}
+.final-check.play .fc-item:nth-child(8){animation-delay:.74s}
+.final-check.play .fc-item:nth-child(9){animation-delay:.84s}
+.final-check.play .fc-item:nth-child(10){animation-delay:.94s}
+.final-check.play .fc-item:nth-child(11){animation-delay:1.04s}
+.final-check.play .fc-item:nth-child(12){animation-delay:1.14s}
+.final-check.play .fc-item:nth-child(13){animation-delay:1.24s}
+.final-check.play .fc-item:nth-child(14){animation-delay:1.34s}
+@keyframes fcIn { to{opacity:1;transform:translateX(0)} }
+.fc-check { width:20px; height:20px; border-radius:50%; border:1px solid var(--green); color:var(--green); flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:11px; }
+.fc-text { font-size:.82rem; color:var(--text); font-family:'IBM Plex Mono',monospace; }
+
+/* ═══ ANTES / DEPOIS ═══ */
+.yn { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+@media(max-width:680px){ .yn{ grid-template-columns:1fr; } }
+.yn-col { border-radius:14px; padding:18px 20px; }
+.yn-yes { background:rgba(0,255,136,.05); border:1px solid rgba(0,255,136,.22); }
+.yn-no  { background:rgba(255,107,53,.05); border:1px solid rgba(255,107,53,.22); }
+.yn-col h4 { font-family:'Syne',sans-serif; font-size:.92rem; margin-bottom:12px; }
+.yn-col li { list-style:none; font-size:.82rem; color:var(--muted); line-height:1.55; padding:5px 0 5px 20px; position:relative; }
+.yn-yes li::before { content:'✓'; position:absolute; left:0; color:var(--green); }
+.yn-no  li::before { content:'✕'; position:absolute; left:0; color:var(--orange); }
+
+.next-pills { display:flex; flex-wrap:wrap; gap:10px; }
+.next-pill { font-family:'IBM Plex Mono',monospace; font-size:11.5px; padding:8px 15px; border-radius:20px; background:rgba(124,58,237,.08); border:1px solid rgba(124,58,237,.3); color:var(--pink); }
+
+.slide-scroll { overflow-y:auto; }
+.divider { height:1px; background:var(--border); margin:18px 0; }
+
+code.inline { font-family:'IBM Plex Mono',monospace; color:var(--cyan); background:rgba(0,229,255,.06); padding:1px 7px; border-radius:5px; font-size:.86em; }
+
+/* ═══ CICLO DE VIDA ═══ */
+.ciclo { display:flex; align-items:stretch; gap:8px; flex-wrap:wrap; margin:10px 0 6px; }
+.ci-step {
+  flex:1; min-width:132px; border-radius:12px; padding:14px 14px;
+  background:var(--card); border:1px solid var(--border);
+  font-family:'IBM Plex Mono',monospace; font-size:.72rem; color:var(--muted); line-height:1.5;
+}
+.ci-step .ci-n { display:block; font-size:.68rem; letter-spacing:1.5px; margin-bottom:6px; opacity:.75; }
+.ci-step .ci-t { display:block; font-size:.86rem; color:var(--text); margin-bottom:5px; font-family:'Syne',sans-serif; font-weight:700; }
+.ci-a { border-color:rgba(0,229,255,.4);  background:rgba(0,229,255,.06); }
+.ci-a .ci-n { color:var(--cyan); }
+.ci-b { border-color:rgba(255,107,53,.4); background:rgba(255,107,53,.06); }
+.ci-b .ci-n { color:var(--orange); }
+.ci-c { border-color:rgba(0,255,136,.35); background:rgba(0,255,136,.05); }
+.ci-c .ci-n { color:var(--green); }
+
+/* ═══ CADEIA CAUSAL ═══ */
+.cadeia { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:12px 0 4px; }
+.cd-box {
+  flex:1; min-width:150px; border-radius:10px; padding:13px 15px; text-align:center;
+  background:rgba(255,77,109,.06); border:1px solid rgba(255,77,109,.28);
+  font-family:'IBM Plex Mono',monospace; font-size:.74rem; color:#ffb3c1; line-height:1.5;
+}
+.cd-box.fim { background:rgba(255,77,109,.14); border-color:rgba(255,77,109,.5); color:#ff8fa3; font-weight:600; }
+.cd-arrow { color:#ff8fa3; font-size:1.3rem; flex-shrink:0; }
+@media(max-width:780px){ .cd-arrow{ transform:rotate(90deg); } }
+
+/* ═══ FLUXO DE AGENTES ═══ */
+.agflow { display:flex; align-items:stretch; gap:10px; flex-wrap:wrap; margin:6px 0 4px; }
+.agnode {
+  flex:1; min-width:140px; border-radius:12px; padding:14px 16px;
+  font-family:'IBM Plex Mono',monospace; font-size:.76rem; text-align:center;
+  background:var(--card); border:1px solid var(--border); color:var(--muted);
+}
+.agnode .an-name { font-size:.86rem; color:var(--text); display:block; margin-bottom:6px; }
+.agnode.has  { background:rgba(0,255,136,.06); border-color:rgba(0,255,136,.35); }
+.agnode.has .an-name { color:var(--green); }
+.agnode.hasnt { background:rgba(255,107,53,.05); border-color:rgba(255,107,53,.25); }
+.agnode.hasnt .an-name { color:var(--orange); }
+</style>
+</head>
+<body>
+
+<canvas id="bg"></canvas>
+<div id="progress-bar"></div>
+
+<div id="topbar">
+  <span class="tb-label">⬡ Etapa 4 — Busca Semântica com Qdrant</span>
+  <span class="tb-title" id="slide-title-bar"></span>
+  <span class="tb-counter" id="slide-counter"></span>
+</div>
+
+<div id="nav-prev">←</div>
+<div id="nav-next">→</div>
+<div id="dots"></div>
+
+<div id="slides">
+
+<!-- ─── 0: HERO ─── -->
+<div class="slide active" data-title="Abertura">
+<div class="slide-inner">
+  <div class="badge">QDRANT · EMBEDDINGS · BUSCA SEMÂNTICA</div>
+  <h1 class="hero-title">De regex para <span style="color:var(--orange)">semântica</span>:<br>o assessor que <span style="color:var(--cyan)">entende</span>.</h1>
+  <p class="lead" style="max-width:740px;">Seu assessor já tem memória de longo prazo — mas a busca por palavras-chave é frágil. Nesta etapa, trocamos o regex do MongoDB e o FAISS do FAQ por busca vetorial no Qdrant. O resultado: <strong style="color:var(--text)">"viajar" encontra "viagem para Salvador"</strong>.</p>
+  <div class="hero-q">📌 <strong>Três perguntas guiam a aula:</strong> por que busca por texto falha em IA? O que é um banco vetorial? E como o Qdrant resolve os dois problemas (memória e FAQ) de uma vez?</div>
+  <div class="pill-row" style="margin-top:22px;">
+    <div class="pill">🧱 12 passos + teoria, 3 blocos</div>
+    <div class="pill">✅ cada bloco com teste</div>
+    <div class="pill">📋 código pronto para copiar</div>
+    <div class="pill">🔷 Qdrant Cloud (gratuito)</div>
+  </div>
+  <div class="callout co-warn" style="max-width:740px;">
+    <div class="ct">Pré-requisitos</div>
+    <p>A Etapa 3 precisa estar concluída: memória de longo prazo com MongoDB funcionando, <code>encerrar_sessao()</code> gerando resumos, e a tool <code>buscar_historico</code> operacional. Você também precisa do MongoDB, das chaves de API no <code>.env</code> e do servidor subindo com <code>uvicorn app.main:app --reload</code>.</p>
+  </div>
+</div>
+</div>
+
+<!-- ─── 1: POR QUE O REGEX FALHA ─── -->
+<div class="slide" data-title="O regex do MongoDB é frágil">
+<div class="slide-inner slide-scroll">
+  <span class="otag">diagnóstico</span>
+  <h2 class="sec-title">O regex do MongoDB é <span style="color:var(--orange)">frágil</span> para IA</h2>
+  <p class="lead">O <code class="inline">$regex</code> do MongoDB faz correspondência textual exata — no máximo case-insensitive. Se o resumo diz <strong style="color:var(--text)">"viagem para Salvador"</strong> e o agente busca <strong style="color:var(--text)">"viajar"</strong>, <strong style="color:var(--text)">"destino"</strong> ou <strong style="color:var(--text)">"férias"</strong>, o regex retorna zero resultados. A IA gera sinônimos naturalmente — o mecanismo de busca precisa acompanhar.</p>
+
+  <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px;">
+    <table class="tbl">
+      <thead><tr><th>Busca</th><th>Resultado</th><th>Por quê</th></tr></thead>
+      <tbody>
+        <tr><td><code>viagem</code></td><td><strong style="color:var(--green)">✓ 1 resultado</strong></td><td>substring exata encontrada no resumo</td></tr>
+        <tr><td><code>Salvador</code></td><td><strong style="color:var(--green)">✓ 1 resultado</strong></td><td>substring exata encontrada</td></tr>
+        <tr><td><code>viajar</code></td><td><strong style="color:var(--orange)">✕ 0 resultados</strong></td><td>"viajar" ≠ "viagem" — radicais diferentes</td></tr>
+        <tr><td><code>destino</code></td><td><strong style="color:var(--orange)">✕ 0 resultados</strong></td><td>sinônimo, mas o regex não sabe disso</td></tr>
+        <tr><td><code>férias</code></td><td><strong style="color:var(--orange)">✕ 0 resultados</strong></td><td>conceito relacionado, texto diferente</td></tr>
+        <tr><td><code>moveis</code></td><td><strong style="color:var(--orange)">✕ 0 resultados</strong></td><td>"moveis" ≠ "móveis" — sem acento não casa</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout co-err">
+    <div class="ct">O agente está certo — a busca está errada</div>
+    <p>O agente está certo ao dizer "não encontrei nada" — o problema não é ele, é a busca. A arquitetura está correta; a <strong style="color:var(--text)">recuperação</strong> é que é frágil.</p>
+  </div>
+</div>
+</div>
+
+<!-- ─── 2: POR QUE O FAISS NÃO SERVE ─── -->
+<div class="slide" data-title="O FAISS recria o índice a cada pergunta">
+<div class="slide-inner slide-scroll">
+  <span class="otag">diagnóstico</span>
+  <h2 class="sec-title">O FAISS recria o índice a <span style="color:var(--orange)">cada pergunta</span></h2>
+  <p class="lead">Olhando o <code class="inline">tools/faq.py</code> atual, cada chamada da tool faz: carregar PDF → split → gerar embeddings de <strong style="color:var(--text)">todos</strong> os chunks → criar índice FAISS → buscar. Isso é desnecessário e caro.</p>
+
+  <div class="code-wrap">
+    <div class="code-header" onclick="toggleCode(this)">
+      <span class="fname">app/tools/faq.py — código atual (antes da migração)</span>
+      <div class="code-right"><span class="lbadge">o problema</span><button class="copy-btn" onclick="copyCode(event, this)">Copiar</button><span class="code-toggle-btn">Clique para ver</span></div>
+    </div>
+    <div class="code"><span class="o">@tool</span>
+<span class="k">def</span> <span class="h">faq_retriever</span>(question: str) -&gt; str:
+    <span class="s">"""Busca no FAQ oficial os trechos mais relevantes."""</span>
+    
+    splitter = RecursiveCharacterTextSplitter(chunk_size=<span class="o">700</span>, chunk_overlap=<span class="o">150</span>)
+    chunks = splitter.split_documents(docs)  <span class="c"># ← recria os chunks TODA VEZ</span>
+
+    embeddings = GoogleGenerativeAIEmbeddings(
+        model=<span class="s">"gemini-embedding-2-preview"</span>,
+        google_api_key=GEMINI_API_KEY,
+    )
+
+    db = FAISS.from_documents(chunks, embeddings)  <span class="c"># ← reconstrói o índice TODA VEZ</span>
+
+    results = db.similarity_search(question, k=<span class="o">6</span>)
+   
+    <span class="k">return</span> <span class="s">"\n\n"</span>.join([t.page_content <span class="k">for</span> t <span class="k">in</span> results])</div>
+  </div>
+
+  <div class="callout co-warn">
+    <div class="ct">O custo escondido</div>
+    <p>O PDF tem ~15 chunks. A cada pergunta de FAQ, o sistema gera <strong style="color:var(--text)">15 embeddings</strong> (chamadas de API ao Gemini), reconstrói o índice em memória, e depois faz a busca. Se o PDF tivesse 500 páginas, seriam centenas de embeddings por pergunta. O FAISS é bom para prototipar — em produção, precisamos de <strong style="color:var(--text)">indexação separada da consulta</strong>.</p>
+  </div>
+</div>
+</div>
+
+<!-- ─── 3: A SOLUÇÃO — QDRANT ─── -->
+<div class="slide" data-title="Qdrant: um banco vetorial para tudo">
+<div class="slide-inner slide-scroll">
+  <span class="gtag">solução</span>
+  <h2 class="sec-title">Qdrant: um banco vetorial para <span style="color:var(--cyan)">tudo</span></h2>
+  <p class="lead">O Qdrant é um banco de dados vetorial que armazena embeddings e permite busca por similaridade semântica. Diferente do regex (texto exato), ele compara o <strong style="color:var(--text)">significado</strong>. Uma única infraestrutura resolve os dois problemas: memória e FAQ.</p>
+
+  <div class="yn" style="margin-bottom:18px;">
+    <div class="yn-col yn-no">
+      <h4 style="color:var(--orange)">Antes</h4>
+      <ul>
+        <li><code style="color:var(--text)">$regex</code> no MongoDB para memória — perde sinônimos</li>
+        <li>FAISS reconstruído a cada chamada para FAQ — lento e caro</li>
+        <li>Busca textual: "viajar" nunca encontra "viagem"</li>
+      </ul>
+    </div>
+    <div class="yn-col yn-yes">
+      <h4 style="color:var(--green)">Depois</h4>
+      <ul>
+        <li>Qdrant para memória <strong style="color:var(--text)">e</strong> FAQ — uma só infraestrutura</li>
+        <li>Indexação uma vez, consulta sempre — rápido e barato</li>
+        <li>"viajar" encontra "viagem para Salvador" — semântica</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3 class="slide-h3">Duas <span style="color:var(--cyan)">collections</span>, dois propósitos</h3>
+  <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px;">
+    <table class="tbl">
+      <thead><tr><th>Collection</th><th>Para quê</th></tr></thead>
+      <tbody>
+        <tr><td><code>memoria_resumos</code></td><td>Busca semântica nos resumos de sessões encerradas</td></tr>
+        <tr><td><code>faq_chunks</code></td><td>RAG no PDF do FAQ — indexação separada da consulta</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout co-ok">
+    <div class="ct">Gratuito e suficiente</div>
+    <p>O Qdrant Cloud tem um tier gratuito de 1 GB — mais que suficiente para nosso projeto. A <code>GEMINI_API_KEY</code> que já temos gera os embeddings.</p>
+  </div>
+</div>
+</div>
+
+<!-- ─── 3B: POR DENTRO DO QDRANT — COMO OS DADOS SÃO ARMAZENADOS ─── -->
+<div class="slide" data-title="Por dentro do Qdrant">
+<div class="slide-inner slide-scroll">
+  <span class="ptag">teoria</span>
+  <h2 class="sec-title">Por dentro do Qdrant: <span style="color:var(--cyan)">Point</span>, <span style="color:var(--green)">Vector</span> e <span style="color:var(--orange)">Payload</span></h2>
+  <p class="lead">Antes de configurar, vale entender <strong style="color:var(--text)">o que</strong> o Qdrant armazena. A unidade básica é o <strong style="color:var(--cyan)">Point</strong> — o equivalente a um "documento" no MongoDB, mas pensado para busca por significado.</p>
+
+  <h3 class="slide-h3">Um Point tem três partes</h3>
+  <div class="g3" style="margin-bottom:18px;">
+    <div class="card" style="border-color:rgba(0,229,255,.35);">
+      <h4 style="font-family:'Syne',sans-serif;font-size:.88rem;color:var(--cyan);margin-bottom:8px;">🆔 id</h4>
+      <p style="font-size:.82rem;color:var(--muted);line-height:1.6;">Identificador único do ponto. Pode ser UUID ou inteiro. No nosso caso, usamos o mesmo <code class="inline">doc_id</code> do MongoDB — assim podemos ir do Qdrant ao Mongo para buscar detalhes.</p>
+    </div>
+    <div class="card" style="border-color:rgba(0,255,136,.35);">
+      <h4 style="font-family:'Syne',sans-serif;font-size:.88rem;color:var(--green);margin-bottom:8px;">📐 vector</h4>
+      <p style="font-size:.82rem;color:var(--muted);line-height:1.6;">Uma lista de números (768 floats no nosso caso) gerada pelo modelo de embedding. Representa o <strong style="color:var(--text)">significado</strong> do texto. Textos com sentidos parecidos têm vetores parecidos.</p>
+    </div>
+    <div class="card" style="border-color:rgba(255,107,53,.35);">
+      <h4 style="font-family:'Syne',sans-serif;font-size:.88rem;color:var(--orange);margin-bottom:8px;">📦 payload</h4>
+      <p style="font-size:.82rem;color:var(--muted);line-height:1.6;">JSON livre com metadados — como um documento no MongoDB. Você coloca o que quiser: <code class="inline">resumo</code>, <code class="inline">user_id</code>, <code class="inline">page_content</code>. O Qdrant guarda e devolve, mas <strong style="color:var(--text)">não busca por ele</strong> — ele busca pelo vetor.</p>
+    </div>
+  </div>
+
+  <h3 class="slide-h3">MongoDB doc <span style="color:var(--muted)">vs</span> Qdrant point</h3>
+  <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px;">
+    <table class="tbl">
+      <thead><tr><th>Conceito</th><th>MongoDB</th><th>Qdrant</th></tr></thead>
+      <tbody>
+        <tr><td><strong style="color:var(--text)">Unidade de dados</strong></td><td>Document (JSON)</td><td>Point (id + vector + payload)</td></tr>
+        <tr><td><strong style="color:var(--text)">Identificador</strong></td><td><code>_id</code></td><td><code>id</code></td></tr>
+        <tr><td><strong style="color:var(--text)">Metadados livres</strong></td><td>Campos do documento</td><td><code>payload</code> (JSON livre, igual)</td></tr>
+        <tr><td><strong style="color:var(--text)">Diferencial</strong></td><td>Não tem vetor</td><td>O <code>vector</code> — 768 números que codificam o significado</td></tr>
+        <tr><td><strong style="color:var(--text)">Busca principal</strong></td><td>Por campo: <code>{"nome": "João"}</code></td><td>Por similaridade do vetor (semântica)</td></tr>
+        <tr><td><strong style="color:var(--text)">Agrupamento</strong></td><td>Collection</td><td>Collection (mesmo nome, mesmo conceito)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout co-info">
+    <div class="ct">Payload ≠ vetor na busca</div>
+    <p>O payload é <strong style="color:var(--text)">devolvido</strong> junto com o resultado, mas a busca em si é feita pelo <strong style="color:var(--text)">vetor</strong>. É como se o vetor fosse o "índice de busca" e o payload fosse o "conteúdo que volta". Você pode até filtrar pelo payload (ex: <code>user_id == "marcelo"</code>), mas a ordenação dos resultados é por similaridade vetorial, não textual.</p>
+  </div>
+</div>
+</div>
+
+<!-- ─── 3C: UPSERT, QUERY E SIMILARIDADE POR COSSENO ─── -->
+<div class="slide" data-title="upsert e query_points">
+<div class="slide-inner slide-scroll">
+  <span class="ptag">teoria</span>
+  <h2 class="sec-title">As duas operações: <code class="inline">upsert</code> e <code class="inline">query_points</code></h2>
+  <p class="lead">No nosso código, só usamos duas operações do Qdrant. Entendê-las é entender todo o fluxo.</p>
+
+  <div class="g2" style="margin-bottom:20px;">
+    <div class="card" style="border-color:rgba(0,229,255,.35);">
+      <h4 style="font-family:'Syne',sans-serif;font-size:.92rem;color:var(--cyan);margin-bottom:10px;">⬆️ upsert — gravar um ponto</h4>
+      <p style="font-size:.82rem;color:var(--muted);line-height:1.65;margin-bottom:10px;"><strong style="color:var(--text)">Quando:</strong> ao encerrar uma sessão (<code class="inline">encerrar_sessao</code>) e ao indexar os chunks do PDF (<code class="inline">ingest_faq</code>).</p>
+      <p style="font-size:.82rem;color:var(--muted);line-height:1.65;margin-bottom:10px;"><strong style="color:var(--text)">O que faz:</strong> insere um ponto novo ou atualiza se o <code class="inline">id</code> já existir (<em>up</em>date + in<em>sert</em> = upsert).</p>
+      <p style="font-size:.82rem;color:var(--muted);line-height:1.65;">Você envia: <code class="inline">id</code> + <code class="inline">vector</code> (embedding do texto) + <code class="inline">payload</code> (metadados JSON).</p>
+    </div>
+    <div class="card" style="border-color:rgba(0,255,136,.35);">
+      <h4 style="font-family:'Syne',sans-serif;font-size:.92rem;color:var(--green);margin-bottom:10px;">🔍 query_points — buscar por significado</h4>
+      <p style="font-size:.82rem;color:var(--muted);line-height:1.65;margin-bottom:10px;"><strong style="color:var(--text)">Quando:</strong> ao buscar na memória (<code class="inline">recuperar_historico</code>) e ao responder FAQ (<code class="inline">faq_retriever</code>).</p>
+      <p style="font-size:.82rem;color:var(--muted);line-height:1.65;margin-bottom:10px;"><strong style="color:var(--text)">O que faz:</strong> recebe o vetor da pergunta, compara com todos os vetores da collection por <strong style="color:var(--text)">similaridade de cosseno</strong>, e retorna os mais parecidos.</p>
+      <p style="font-size:.82rem;color:var(--muted);line-height:1.65;">Você envia: <code class="inline">query</code> (vetor da pergunta) + <code class="inline">limit</code> + <code class="inline">query_filter</code> (opcional).</p>
+    </div>
+  </div>
+
+  <h3 class="slide-h3">Similaridade de cosseno — como o match funciona</h3>
+  <p class="lead" style="margin-bottom:12px;">Quando você faz uma busca, o Qdrant não compara <em>palavras</em> — compara <em>vetores</em>. Cada texto virou uma lista de 768 números. A <strong style="color:var(--text)">similaridade de cosseno</strong> mede o ângulo entre dois vetores:</p>
+  <div class="g3" style="margin-bottom:16px;">
+    <div class="card" style="text-align:center;border-color:rgba(0,255,136,.35);">
+      <p style="font-size:1.6rem;margin-bottom:6px;">≈ 1.0</p>
+      <p style="font-size:.78rem;color:var(--green);">Significados quase idênticos</p>
+      <p style="font-size:.74rem;color:var(--muted);margin-top:4px;">"viagem" ↔ "viajar"</p>
+    </div>
+    <div class="card" style="text-align:center;border-color:rgba(255,107,53,.35);">
+      <p style="font-size:1.6rem;margin-bottom:6px;">≈ 0.5</p>
+      <p style="font-size:.78rem;color:var(--orange);">Alguma relação</p>
+      <p style="font-size:.74rem;color:var(--muted);margin-top:4px;">"viagem" ↔ "mala"</p>
+    </div>
+    <div class="card" style="text-align:center;border-color:rgba(255,77,109,.35);">
+      <p style="font-size:1.6rem;margin-bottom:6px;">≈ 0.0</p>
+      <p style="font-size:.78rem;color:#ff8fa3;">Sem relação</p>
+      <p style="font-size:.74rem;color:var(--muted);margin-top:4px;">"viagem" ↔ "imposto"</p>
+    </div>
+  </div>
+
+  <p class="lead" style="margin-bottom:12px;">O Qdrant calcula o cosseno entre o vetor da pergunta e <strong style="color:var(--text)">cada ponto</strong> da collection, ordena do mais similar ao menos, e devolve os <code class="inline">limit</code> primeiros — junto com o payload completo.</p>
+
+  <h3 class="slide-h3">E o <code class="inline">query_filter</code>?</h3>
+  <p class="lead" style="margin-bottom:12px;">O filtro age <strong style="color:var(--text)">antes</strong> da busca vetorial — como um <code class="inline">WHERE</code> no SQL. No nosso caso, usamos para restringir a busca ao <code class="inline">user_id</code> do usuário atual:</p>
+  <div class="code-wrap">
+    <div class="code-header" onclick="toggleCode(this)">
+      <span class="fname">Exemplo simplificado de query_points</span>
+      <div class="code-right"><span class="lbadge">conceito</span><button class="copy-btn" onclick="copyCode(event, this)">Copiar</button><span class="code-toggle-btn">Clique para ver</span></div>
+    </div>
+    <div class="code">qdrant.query_points(
+    collection_name=<span class="s">"memoria_resumos"</span>,
+    query=vetor_da_pergunta,        <span class="c"># [0.12, -0.34, 0.56, ... 768 floats]</span>
+    query_filter=models.Filter(     <span class="c"># WHERE user_id = "usuario_teste"</span>
+        must=[
+            models.FieldCondition(
+                key=<span class="s">"user_id"</span>,
+                match=models.MatchValue(value=<span class="s">"usuario_teste"</span>),
+            )
+        ]
+    ),
+    limit=<span class="o">3</span>,                        <span class="c"># top 3 mais similares</span>
+)</div>
+  </div>
+
+  <div class="callout co-ok" style="margin-top:14px;">
+    <div class="ct">Fluxo completo em uma frase</div>
+    <p>O Qdrant filtra os pontos pelo payload (<code>user_id</code>), calcula a similaridade de cosseno entre o vetor da pergunta e o vetor de cada ponto que passou no filtro, ordena do mais similar ao menos, e devolve os top N — cada um com <code>id</code>, <code>score</code> e <code>payload</code> completo.</p>
+  </div>
+</div>
+</div>
+
+<!-- ─── 4: CRIAR CONTA NO QDRANT CLOUD ─── -->
+<div class="slide" data-title="Passo 1 — Qdrant Cloud">
+<div class="slide-inner slide-scroll">
+  <span class="bloco-mark bl-a">Bloco A · setup</span>
+  <div class="step-marker">
+    <div class="step-num">1</div>
+    <div class="step-meta">
+      <span class="step-file">Qdrant Cloud — conta e cluster</span>
+      <span class="step-obj">Criar a infraestrutura vetorial no tier gratuito.</span>
+    </div>
+  </div>
+
+  <p class="lead">O Qdrant Cloud hospeda o banco vetorial para você — sem precisar instalar nada localmente.</p>
+
+  <div class="card" style="margin-bottom:16px;">
+    <ol style="margin-left:18px;">
+      <li style="color:var(--muted);font-size:.86rem;line-height:1.8;margin-bottom:4px;">Acesse <a href="https://cloud.qdrant.io" style="color:var(--cyan);">https://cloud.qdrant.io</a> e crie uma conta (pode usar Google)</li>
+      <li style="color:var(--muted);font-size:.86rem;line-height:1.8;margin-bottom:4px;">Ao entrar, clique em <strong style="color:var(--text)">"Create Cluster"</strong></li>
+      <li style="color:var(--muted);font-size:.86rem;line-height:1.8;margin-bottom:4px;">Escolha o tier gratuito (<strong style="color:var(--green)">Free</strong>)</li>
+      <li style="color:var(--muted);font-size:.86rem;line-height:1.8;margin-bottom:4px;">Região: escolha a mais próxima (ex: <code>eu-west</code>)</li>
+      <li style="color:var(--muted);font-size:.86rem;line-height:1.8;margin-bottom:4px;">Dê um nome ao cluster (ex: <strong style="color:var(--text)">"assessor"</strong>)</li>
+      <li style="color:var(--muted);font-size:.86rem;line-height:1.8;margin-bottom:4px;">Após criar, copie a <strong style="color:var(--cyan)">URL</strong> e a <strong style="color:var(--cyan)">API Key</strong> do cluster</li>
+    </ol>
+  </div>
+
+  <div class="callout co-warn" style="margin-bottom:14px;">
+    <div class="ct">Guarde a API Key</div>
+    <p>Guarde a API Key em local seguro — ela <strong style="color:var(--text)">não será exibida novamente</strong>. Você vai precisar dela no <code>.env</code>.</p>
+  </div>
+
+  <div class="code-wrap">
+    <div class="code-header" onclick="toggleCode(this)">
+      <span class="fname">.env — adicionar as variáveis do Qdrant</span>
+      <div class="code-right"><span class="lbadge">acrescentar</span><button class="copy-btn" onclick="copyCode(event, this)">Copiar</button><span class="code-toggle-btn">Clique para ver</span></div>
+    </div>
+    <div class="code">QDRANT_URL=https://seu-cluster-id.region.aws.cloud.qdrant.io
+QDRANT_API_KEY=sua-api-key-aqui</div>
+  </div>
+</div>
+</div>
+
+<!-- ─── 5: CRIAR AS COLLECTIONS ─── -->
+<div class="slide" data-title="Passo 2 — Criar as collections">
+<div class="slide-inner slide-scroll">
+  <span class="bloco-mark bl-a">Bloco A · setup</span>
+  <div class="step-marker">
+    <div class="step-num">2</div>
+    <div class="step-meta">
+      <span class="step-file">Qdrant Cloud — duas collections</span>
+      <span class="step-obj">No Qdrant, collection é o equivalente a uma tabela.</span>
+    </div>
+  </div>
+
+  <p class="lead">Vamos criar duas collections: uma para memória e outra para FAQ. Cada uma com configurações diferentes de acesso.</p>
+
+  <h3 class="slide-h3">Collection 1: <code class="inline">memoria_resumos</code></h3>
+  <div class="card" style="margin-bottom:16px;">
+    <ol style="margin-left:18px;">
+      <li style="color:var(--muted);font-size:.86rem;line-height:1.8;margin-bottom:4px;">Na UI, clique em <strong style="color:var(--text)">"Create Collection"</strong></li>
+      <li style="color:var(--muted);font-size:.86rem;line-height:1.8;margin-bottom:4px;">Nome: <code>memoria_resumos</code></li>
+      <li style="color:var(--muted);font-size:.86rem;line-height:1.8;margin-bottom:4px;">Tipo: <strong style="color:var(--cyan)">Multitenancy</strong> — cada usuário só busca nos resumos dele</li>
+      <li style="color:var(--muted);font-size:.86rem;line-height:1.8;margin-bottom:4px;">Busca: <strong style="color:var(--text)">Simple Single embedding</strong></li>
+      <li style="color:var(--muted);font-size:.86rem;line-height:1.8;margin-bottom:4px;">Vector size: <code>768</code></li>
+      <li style="color:var(--muted);font-size:.86rem;line-height:1.8;margin-bottom:4px;">Distance: <code>Cosine</code></li>
+      <li style="color:var(--muted);font-size:.86rem;line-height:1.8;margin-bottom:4px;">Campo do tenant: <code>user_id</code></li>
+    </ol>
+  </div>
+
+  <h3 class="slide-h3">Collection 2: <code class="inline">faq_chunks</code></h3>
+  <div class="card" style="margin-bottom:16px;">
+    <ol style="margin-left:18px;">
+      <li style="color:var(--muted);font-size:.86rem;line-height:1.8;margin-bottom:4px;">Clique em <strong style="color:var(--text)">"Create Collection"</strong> novamente</li>
+      <li style="color:var(--muted);font-size:.86rem;line-height:1.8;margin-bottom:4px;">Nome: <code>faq_chunks</code></li>
+      <li style="color:var(--muted);font-size:.86rem;line-height:1.8;margin-bottom:4px;">Tipo: <strong style="color:var(--cyan)">Global Search</strong> — o FAQ é o mesmo para todos</li>
+      <li style="color:var(--muted);font-size:.86rem;line-height:1.8;margin-bottom:4px;">Busca: <strong style="color:var(--text)">Simple Single embedding</strong></li>
+      <li style="color:var(--muted);font-size:.86rem;line-height:1.8;margin-bottom:4px;">Vector size: <code>768</code></li>
+      <li style="color:var(--muted);font-size:.86rem;line-height:1.8;margin-bottom:4px;">Distance: <code>Cosine</code></li>
+    </ol>
+  </div>
+
+  <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px;">
+    <table class="tbl">
+      <thead><tr><th>Collection</th><th>Tipo</th><th>Busca</th><th>Size</th><th>Distance</th></tr></thead>
+      <tbody>
+        <tr><td><code>memoria_resumos</code></td><td>Multitenancy (tenant: <code>user_id</code>)</td><td>Simple Single</td><td><code>768</code></td><td><code>Cosine</code></td></tr>
+        <tr><td><code>faq_chunks</code></td><td>Global Search</td><td>Simple Single</td><td><code>768</code></td><td><code>Cosine</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout co-info">
+    <div class="ct">Por que 768 e não 3072?</div>
+    <p>O Gemini Embedding 2 gera até 3072 dimensões, mas o Google recomenda <strong style="color:var(--text)">768 para produção</strong> — qualidade quase idêntica com 1/4 do armazenamento. Basta passar <code>output_dimensionality=768</code> ao gerar embeddings.</p>
+  </div>
+</div>
+</div>
+
+<!-- ─── 6: INSTALAR DEPENDÊNCIA ─── -->
+<div class="slide" data-title="Passo 3 — qdrant-client">
+<div class="slide-inner slide-scroll">
+  <span class="bloco-mark bl-a">Bloco A · setup</span>
+  <div class="step-marker">
+    <div class="step-num">3</div>
+    <div class="step-meta">
+      <span class="step-file">Terminal — instalar qdrant-client</span>
+      <span class="step-obj">Único pacote novo desta etapa.</span>
+    </div>
+  </div>
+
+  <div class="code-wrap">
+    <div class="code-header" onclick="toggleCode(this)">
+      <span class="fname">Terminal</span>
+      <div class="code-right"><span class="lbadge">executar</span><button class="copy-btn" onclick="copyCode(event, this)">Copiar</button><span class="code-toggle-btn">Clique para ver</span></div>
+    </div>
+    <div class="code">pip install qdrant-client</div>
+  </div>
+
+  <div class="callout co-ok">
+    <div class="ct">Só esse</div>
+    <p>Não precisa instalar pacotes novos para embeddings — o <code>langchain-google-genai</code> que já temos tem o <code>GoogleGenerativeAIEmbeddings</code>.</p>
+  </div>
+</div>
+</div>
+
+<!-- ─── 7: vectorstore.py ─── -->
+<div class="slide" data-title="Passo 4 — vectorstore.py">
+<div class="slide-inner slide-scroll">
+  <span class="bloco-mark bl-b">Bloco B · código</span>
+  <div class="step-marker">
+    <div class="step-num b">4</div>
+    <div class="step-meta">
+      <span class="step-file">app/vectorstore.py <span style="color:var(--green);font-size:.78rem;">(arquivo novo)</span></span>
+      <span class="step-obj">Centralizar o cliente Qdrant e o modelo de embedding.</span>
+    </div>
+  </div>
+
+  <p class="lead">Este arquivo centraliza o cliente Qdrant e o modelo de embedding. Assim como o <code class="inline">llms.py</code> centraliza os LLMs, este centraliza os vetores. Todos os outros arquivos importam daqui.</p>
+
+  <div class="code-wrap">
+    <div class="code-header" onclick="toggleCode(this)">
+      <span class="fname">app/vectorstore.py</span>
+      <div class="code-right"><span class="lbadge">arquivo completo</span><button class="copy-btn" onclick="copyCode(event, this)">Copiar</button><span class="code-toggle-btn">Clique para ver</span></div>
+    </div>
+    <div class="code"><span class="s">"""
+Cliente Qdrant e função de embedding — centralizados aqui.
+
+Dois consumidores:
+  - memory.py   → salva/busca resumos na collection "memoria_resumos"
+  - tools/faq.py → busca chunks do PDF na collection "faq_chunks"
+
+O modelo de embedding é o mesmo para ambos (gemini-embedding-2-preview, 768d),
+então instanciamos uma vez só.
+"""</span>
+
+<span class="k">from</span> qdrant_client <span class="k">import</span> QdrantClient, models
+<span class="k">from</span> langchain_google_genai <span class="k">import</span> GoogleGenerativeAIEmbeddings
+<span class="k">from</span> app.config <span class="k">import</span> QDRANT_URL, QDRANT_API_KEY, GEMINI_API_KEY
+
+qdrant = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
+
+COLLECTION_MEMORIA = <span class="s">"memoria_resumos"</span>
+COLLECTION_FAQ     = <span class="s">"faq_chunks"</span>
+EMBEDDING_DIM      = <span class="o">768</span>
+
+_embeddings = GoogleGenerativeAIEmbeddings(
+    model=<span class="s">"gemini-embedding-2-preview"</span>,
+    google_api_key=GEMINI_API_KEY,
+)
+
+
+<span class="k">def</span> <span class="h">gerar_embedding</span>(texto: str) -&gt; list[float]:
+    <span class="s">"""Gera um vetor de 768 dimensões para o texto informado."""</span>
+    <span class="k">return</span> _embeddings.embed_query(texto, output_dimensionality=EMBEDDING_DIM)
+
+
+<span class="k">def</span> <span class="h">gerar_embeddings_batch</span>(textos: list[str]) -&gt; list[list[float]]:
+    <span class="s">"""Gera embeddings para uma lista de textos de uma vez (mais eficiente)."""</span>
+    <span class="k">return</span> _embeddings.embed_documents(textos, output_dimensionality=EMBEDDING_DIM)</div>
+  </div>
+
+  <div class="callout co-info">
+    <div class="ct">output_dimensionality é essencial</div>
+    <p>O <code>output_dimensionality=EMBEDDING_DIM</code> é essencial. Sem ele, o Gemini retorna 3072 dimensões — e o Qdrant rejeitaria com erro <code>'expected dim: 768, got 3072'</code>.</p>
+  </div>
+</div>
+</div>
+
+<!-- ─── 8: config.py ─── -->
+<div class="slide" data-title="Passo 5 — config.py">
+<div class="slide-inner slide-scroll">
+  <span class="bloco-mark bl-b">Bloco B · código</span>
+  <div class="step-marker">
+    <div class="step-num b">5</div>
+    <div class="step-meta">
+      <span class="step-file">app/config.py</span>
+      <span class="step-obj">Tornar QDRANT_URL e QDRANT_API_KEY obrigatórias.</span>
+    </div>
+  </div>
+
+  <p class="lead">As variáveis <code class="inline">QDRANT_URL</code> e <code class="inline">QDRANT_API_KEY</code> já existem no <code class="inline">config.py</code> (foram previstas na etapa anterior). Agora precisamos torná-las obrigatórias.</p>
+
+  <div class="code-wrap">
+    <div class="code-header" onclick="toggleCode(this)">
+      <span class="fname">app/config.py — dicionário OBRIGATORIAS</span>
+      <div class="code-right"><span class="lbadge">alterar</span><button class="copy-btn" onclick="copyCode(event, this)">Copiar</button><span class="code-toggle-btn">Clique para ver</span></div>
+    </div>
+    <div class="code">OBRIGATORIAS = {
+    <span class="s">"GEMINI_API_KEY"</span>: GEMINI_API_KEY,
+    <span class="s">"GROQ_API_KEY"</span>:   GROQ_API_KEY,
+    <span class="s">"DATABASE_URL"</span>:   DATABASE_URL,
+    <span class="s">"MONGODB_URI"</span>:    MONGODB_URI,
+    <span class="s">"QDRANT_URL"</span>:     QDRANT_URL,       <span class="c"># ← novo</span>
+    <span class="s">"QDRANT_API_KEY"</span>: QDRANT_API_KEY,   <span class="c"># ← novo</span>
+}</div>
+  </div>
+</div>
+</div>
+
+<!-- ─── 9: O PROBLEMA DO user_id ─── -->
+<div class="slide" data-title="Passo 6 — O problema da identidade">
+<div class="slide-inner slide-scroll">
+  <span class="bloco-mark bl-b">Bloco B · código</span>
+  <div class="step-marker">
+    <div class="step-num b">6</div>
+    <div class="step-meta">
+      <span class="step-file">O problema da identidade entre sessões</span>
+      <span class="step-obj">O session_id muda — e leva a memória junto.</span>
+    </div>
+  </div>
+
+  <p class="lead">O <code class="inline">session_id</code> que o frontend envia muda a cada sessão (é um UUID novo). Quando encerramos uma sessão, salvamos o resumo no Qdrant com esse <code class="inline">session_id</code>. Mas na sessão seguinte, o <code class="inline">session_id</code> é <strong style="color:var(--text)">outro</strong> — e o filtro de multitenancy no Qdrant procura só pelo id atual, que nunca vai encontrar resumos de sessões anteriores.</p>
+
+  <div class="cadeia" style="margin-bottom:16px;">
+    <div class="cd-box">Front gera UUID novo</div>
+    <div class="cd-arrow">→</div>
+    <div class="cd-box">session_id da sessão 2 ≠ sessão 1</div>
+    <div class="cd-arrow">→</div>
+    <div class="cd-box">Filtro no Qdrant não encontra nada</div>
+    <div class="cd-arrow">→</div>
+    <div class="cd-box fim">Memória de longo prazo quebrada</div>
+  </div>
+
+  <p class="lead">A solução: introduzir um <code class="inline">user_id</code> estável — que não muda entre sessões. O <code class="inline">session_id</code> continua existindo para o checkpointer (contexto da conversa atual), mas a memória de longo prazo filtra pelo <code class="inline">user_id</code>.</p>
+
+  <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px;">
+    <table class="tbl">
+      <thead><tr><th>Identificador</th><th>Muda a cada sessão?</th><th>Para quê serve</th></tr></thead>
+      <tbody>
+        <tr><td><code>session_id</code></td><td><strong style="color:var(--orange)">Sim</strong></td><td>Checkpointer (contexto da conversa atual)</td></tr>
+        <tr><td><code>user_id</code></td><td><strong style="color:var(--green)">Não</strong></td><td>Memória de longo prazo (busca entre sessões)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p class="lead">Vamos adicionar <code class="inline">user_id</code> como campo opcional no <code class="inline">ChatRequest</code>, com valor padrão <code class="inline">'usuario_teste'</code>. Assim não quebra nada no frontend existente.</p>
+</div>
+</div>
+
+<!-- ─── 10: schemas.py, chat.py, graph.py ─── -->
+<div class="slide" data-title="Passo 7 — Propagar o user_id">
+<div class="slide-inner slide-scroll">
+  <span class="bloco-mark bl-b">Bloco B · código</span>
+  <div class="step-marker">
+    <div class="step-num b">7</div>
+    <div class="step-meta">
+      <span class="step-file">schemas.py · chat.py · graph.py</span>
+      <span class="step-obj">O user_id percorre todo o caminho: schema → rota → grafo → config → tool → memory.</span>
+    </div>
+  </div>
+
+  <h3 class="slide-h3">Arquivo 1: <code class="inline">app/schemas.py</code></h3>
+
+  <div class="code-wrap">
+    <div class="code-header" onclick="toggleCode(this)">
+      <span class="fname">app/schemas.py — ChatRequest com user_id</span>
+      <div class="code-right"><span class="lbadge">substituir</span><button class="copy-btn" onclick="copyCode(event, this)">Copiar</button><span class="code-toggle-btn">Clique para ver</span></div>
+    </div>
+    <div class="code"><span class="k">class</span> <span class="h">ChatRequest</span>(BaseModel):
+    <span class="s">"""O que o navegador envia no POST /chat."""</span>
+
+    session_id: str = Field(
+        ...,
+        description=<span class="s">"Identifica a conversa (UUID gerado pelo front a cada sessão)."</span>,
+        examples=[<span class="s">"550e8400-e29b-41d4-a716-446655440000"</span>],
+    )
+    user_id: str = Field(
+        default=<span class="s">"usuario_teste"</span>,
+        description=<span class="s">"Identifica o usuário de forma estável entre sessões. "</span>
+                    <span class="s">"É o que permite a memória de longo prazo funcionar."</span>,
+        examples=[<span class="s">"usuario_teste"</span>],
+    )
+    pergunta: str = Field(
+        ...,
+        min_length=<span class="o">1</span>,
+        description=<span class="s">"A mensagem do usuário — o que antes vinha do input()."</span>,
+        examples=[<span class="s">"gastei 50 reais no mercado hoje"</span>],
+    )</div>
+  </div>
+
+  <div class="divider"></div>
+
+  <h3 class="slide-h3">Arquivo 2: <code class="inline">app/routes/chat.py</code></h3>
+
+  <div class="code-wrap">
+    <div class="code-header" onclick="toggleCode(this)">
+      <span class="fname">app/routes/chat.py — passar user_id</span>
+      <div class="code-right"><span class="lbadge">alterar</span><button class="copy-btn" onclick="copyCode(event, this)">Copiar</button><span class="code-toggle-btn">Clique para ver</span></div>
+    </div>
+    <div class="code"><span class="o">@router.post</span>(<span class="s">"/chat"</span>, response_model=ChatResponse)
+<span class="k">def</span> <span class="h">conversar</span>(requisicao: ChatRequest) -&gt; ChatResponse:
+    <span class="s">"""Uma mensagem do usuário, uma resposta do assessor."""</span>
+    resposta = executar_fluxo_assessor(
+        requisicao.pergunta, requisicao.session_id, <span class="h">requisicao.user_id</span>
+    )
+    <span class="k">return</span> ChatResponse(resposta=resposta)</div>
+  </div>
+
+  <div class="divider"></div>
+
+  <h3 class="slide-h3">Arquivo 3: <code class="inline">app/graph.py</code></h3>
+
+  <div class="code-wrap">
+    <div class="code-header" onclick="toggleCode(this)">
+      <span class="fname">app/graph.py — user_id no config e no salvar_mensagem</span>
+      <div class="code-right"><span class="lbadge">alterar</span><button class="copy-btn" onclick="copyCode(event, this)">Copiar</button><span class="code-toggle-btn">Clique para ver</span></div>
+    </div>
+    <div class="code"><span class="k">def</span> <span class="h">executar_fluxo_assessor</span>(
+    pergunta_usuario: str, session_id: str, <span class="h">user_id: str = "usuario_teste"</span>
+) -&gt; str:
+    pergunta_usuario_anonimizado, _ = anonimizar_entrada(pergunta_usuario)
+    estado_inicial = {
+        <span class="s">"messages"</span>:         [{<span class="s">"role"</span>: <span class="s">"human"</span>, <span class="s">"content"</span>: pergunta_usuario}],
+        <span class="s">"agentes_chamados"</span>: [],
+        <span class="s">"rota"</span>:             <span class="s">""</span>,
+        <span class="s">"mapa_pii"</span>:         {},
+        <span class="s">"session_id"</span>:       session_id,
+    }
+
+    estado_final = fluxo_agentes.invoke(
+        estado_inicial,
+        config={<span class="s">"configurable"</span>: {<span class="s">"thread_id"</span>: session_id, <span class="h">"user_id": user_id</span>}},
+    )
+
+    resposta = estado_final[<span class="s">"messages"</span>][-<span class="o">1</span>].text
+    
+    salvar_mensagem(session_id, <span class="s">"human"</span>,     pergunta_usuario_anonimizado, <span class="h">user_id=user_id</span>)
+    salvar_mensagem(session_id, <span class="s">"assistant"</span>, resposta, <span class="h">user_id=user_id</span>)
+
+    <span class="k">return</span> resposta</div>
+  </div>
+
+  <div class="callout co-ok">
+    <div class="ct">Sem quebra no frontend</div>
+    <p>O <code>user_id</code> é opcional com default <code>'usuario_teste'</code>. O frontend não precisa enviar — funciona igual para quem não atualizou o front.</p>
+  </div>
+</div>
+</div>
+
+<!-- ─── 11: memory.py ─── -->
+<div class="slide" data-title="Passo 8 — memory.py">
+<div class="slide-inner slide-scroll">
+  <span class="bloco-mark bl-b">Bloco B · código</span>
+  <div class="step-marker">
+    <div class="step-num b">8</div>
+    <div class="step-meta">
+      <span class="step-file">app/memory.py</span>
+      <span class="step-obj">O arquivo que mais muda: imports novos, encerrar salva no Qdrant, recuperar busca por semântica.</span>
+    </div>
+  </div>
+
+  <p class="lead">Três alterações: imports novos (Qdrant), <code class="inline">encerrar_sessao()</code> salva embedding no Qdrant, e <code class="inline">recuperar_historico()</code> troca regex por busca semântica.</p>
+
+  <div class="code-wrap">
+    <div class="code-header" onclick="toggleCode(this)">
+      <span class="fname">app/memory.py — arquivo completo</span>
+      <div class="code-right"><span class="lbadge">substituir tudo</span><button class="copy-btn" onclick="copyCode(event, this)">Copiar</button><span class="code-toggle-btn">Clique para ver</span></div>
+    </div>
+    <div class="code"><span class="s">"""
+=================
+Modelagem
+---------
+Um documento por acesso (sessão = uma conversa completa).
+O _id é um UUID gerado internamente.
+O session_id identifica a CONVERSA (UUID do front, muda a cada sessão).
+O user_id identifica o USUÁRIO (estável entre sessões — necessário para memória).
+
+Documento
+---------
+{
+  "_id":           "uuid-gerado-internamente",
+  "session_id":    "uuid-da-conversa",
+  "user_id":       "usuario_teste",
+  "iniciada_em":   datetime,
+  "atualizada_em": datetime,
+  "resumo":        "Usuário registrou Pix de R$50...",
+  "mensagens":     [
+    {"role": "usuario",     "content": "oi"},
+    {"role": "assistente", "content": "Olá!"}
+  ]
+}
+
+Funções
+----------------
+  iniciar_sessao(session_id, user_id)        → cria documento no MongoDB
+  salvar_mensagem(session_id, role, content)  → adiciona mensagem na sessão ativa
+  encerrar_sessao(session_id)                 → gera resumo e salva no documento + Qdrant
+"""</span>
+
+<span class="k">import</span> uuid
+<span class="k">from</span> datetime <span class="k">import</span> datetime, timezone
+<span class="k">from</span> app.llms <span class="k">import</span> llm_rapido
+<span class="k">from</span> pymongo <span class="k">import</span> MongoClient
+<span class="h">from qdrant_client import models</span>
+<span class="k">from</span> app.config <span class="k">import</span> MONGODB_URI
+<span class="h">from app.vectorstore import qdrant, gerar_embedding, COLLECTION_MEMORIA</span>
+
+_mongo      = MongoClient(MONGODB_URI)
+db          = _mongo[<span class="s">"assessor"</span>]
+col_sessoes = db[<span class="s">"sessoes"</span>]
+
+col_sessoes.create_index(<span class="s">"session_id"</span>)
+col_sessoes.create_index(<span class="s">"user_id"</span>)
+col_sessoes.create_index(<span class="s">"iniciada_em"</span>)
+
+
+_PROMPT_RESUMO = <span class="s">"""\
+Você é um assistente que resume conversas de assessoria financeira e agenda.
+Gere um resumo conciso em 2-4 frases capturando:
+- O que o usuário fez (transações registradas, eventos agendados)
+- O que o usuário perguntou
+- Informações relevantes mencionadas (valores, datas, categorias)
+
+Responda APENAS com o resumo, sem introdução ou explicação.
+
+Conversa:
+{conversa}
+"""</span>
+_sessoes_ativas: dict = {}
+
+<span class="k">def</span> <span class="h">_agora</span>() -&gt; datetime:
+    <span class="k">return</span> datetime.now(timezone.utc)
+
+<span class="k">def</span> <span class="h">_formatar_conversa</span>(mensagens: list[dict]) -&gt; str:
+    <span class="s">"""Formata o array de mensagens em texto para o prompt de resumo."""</span>
+    linhas = []
+    <span class="k">for</span> msg <span class="k">in</span> mensagens:
+        linhas.append(<span class="s">f"{msg['role']}: {msg['content']}"</span>)
+    <span class="k">return</span> <span class="s">"\n"</span>.join(linhas)
+
+
+<span class="k">def</span> <span class="h">_gerar_resumo</span>(mensagens: list[dict]) -&gt; str:
+    <span class="s">"""Chama o LLM para gerar o resumo da sessão."""</span>
+    conversa = _formatar_conversa(mensagens)
+    <span class="k">return</span> llm_rapido.invoke(
+        _PROMPT_RESUMO.format(conversa=conversa)
+    ).content.strip()
+
+
+<span class="k">def</span> <span class="h">_doc_id_da_sessao</span>(session_id: str) -&gt; str | <span class="k">None</span>:
+    doc_id = _sessoes_ativas.get(session_id)
+    <span class="k">if</span> doc_id:
+        <span class="k">return</span> doc_id
+
+    doc = col_sessoes.find_one(
+        {<span class="s">"session_id"</span>: session_id, <span class="s">"resumo"</span>: {<span class="s">"$in"</span>: [<span class="s">""</span>, <span class="k">None</span>]}},
+        {<span class="s">"_id"</span>: <span class="o">1</span>},
+        sort=[(<span class="s">"iniciada_em"</span>, -<span class="o">1</span>)],
+    )
+    <span class="k">if not</span> doc:
+        <span class="k">return</span> <span class="k">None</span>
+
+    _sessoes_ativas[session_id] = doc[<span class="s">"_id"</span>]
+    <span class="k">return</span> doc[<span class="s">"_id"</span>]
+
+
+<span class="k">def</span> <span class="h">iniciar_sessao</span>(session_id: str, user_id: str = <span class="s">"usuario_teste"</span>) -&gt; <span class="k">None</span>:
+    <span class="k">if</span> _doc_id_da_sessao(session_id):
+        <span class="k">return</span>
+
+    doc_id = str(uuid.uuid4())
+    agora  = _agora()
+
+    col_sessoes.insert_one({
+        <span class="s">"_id"</span>:           doc_id,
+        <span class="s">"session_id"</span>:    session_id,
+        <span class="s">"user_id"</span>:       user_id,
+        <span class="s">"iniciada_em"</span>:   agora,
+        <span class="s">"atualizada_em"</span>: agora,
+        <span class="s">"resumo"</span>:        <span class="s">""</span>,
+        <span class="s">"mensagens"</span>:     [],
+    })
+
+    _sessoes_ativas[session_id] = doc_id
+
+
+<span class="k">def</span> <span class="h">salvar_mensagem</span>(
+    session_id: str, role: str, content: str, user_id: str = <span class="s">"usuario_teste"</span>
+) -&gt; <span class="k">None</span>:
+    iniciar_sessao(session_id, user_id=user_id)
+    doc_id = _doc_id_da_sessao(session_id)
+
+    col_sessoes.update_one(
+        {<span class="s">"_id"</span>: doc_id},
+        {
+            <span class="s">"$push"</span>: {<span class="s">"mensagens"</span>: {<span class="s">"role"</span>: role, <span class="s">"content"</span>: content}},
+            <span class="s">"$set"</span>:  {<span class="s">"atualizada_em"</span>: _agora()},
+        },
+    )
+
+
+<span class="k">def</span> <span class="h">encerrar_sessao</span>(session_id: str) -&gt; str:
+    doc_id = _doc_id_da_sessao(session_id)
+
+    <span class="k">if not</span> doc_id:
+        <span class="k">return</span> <span class="s">""</span>
+
+    doc = col_sessoes.find_one({<span class="s">"_id"</span>: doc_id})
+
+    <span class="k">if not</span> doc <span class="k">or not</span> doc.get(<span class="s">"mensagens"</span>):
+        _sessoes_ativas.pop(session_id, <span class="k">None</span>)
+        <span class="k">return</span> <span class="s">""</span>
+
+    resumo = _gerar_resumo(doc[<span class="s">"mensagens"</span>])
+
+    col_sessoes.update_one(
+        {<span class="s">"_id"</span>: doc_id},
+        {<span class="s">"$set"</span>: {<span class="s">"resumo"</span>: resumo, <span class="s">"atualizada_em"</span>: _agora()}},
+    )
+
+    <span class="c"># Salva o embedding do resumo no Qdrant para busca semântica futura.
+    # O filtro de multitenancy usa user_id (estável entre sessões), não session_id.</span>
+    user_id = doc.get(<span class="s">"user_id"</span>, <span class="s">"usuario_teste"</span>)
+    vetor = gerar_embedding(resumo)
+    qdrant.upsert(
+        collection_name=COLLECTION_MEMORIA,
+        points=[
+            models.PointStruct(
+                id=doc_id,
+                vector=vetor,
+                payload={
+                    <span class="s">"user_id"</span>:     user_id,
+                    <span class="s">"session_id"</span>:  session_id,
+                    <span class="s">"resumo"</span>:      resumo,
+                    <span class="s">"iniciada_em"</span>: doc[<span class="s">"iniciada_em"</span>].isoformat(),
+                },
+            )
+        ],
+    )
+
+    _sessoes_ativas.pop(session_id)
+
+    <span class="k">return</span> resumo
+
+
+<span class="k">def</span> <span class="h">recuperar_historico</span>(user_id: str, busca: str = <span class="s">""</span>, limite: int = <span class="o">3</span>) -&gt; list[dict]:
+    <span class="k">if</span> busca:
+        vetor = gerar_embedding(busca)
+        resultados = qdrant.query_points(
+            collection_name=COLLECTION_MEMORIA,
+            query=vetor,
+            query_filter=models.Filter(
+                must=[
+                    models.FieldCondition(
+                        key=<span class="s">"user_id"</span>,
+                        match=models.MatchValue(value=user_id),
+                    )
+                ]
+            ),
+            limit=limite,
+        )
+
+        <span class="k">if</span> resultados.points:
+            <span class="k">return</span> [
+                {
+                    <span class="s">"doc_id"</span>:      ponto.id,
+                    <span class="s">"iniciada_em"</span>: ponto.payload.get(<span class="s">"iniciada_em"</span>, <span class="s">""</span>),
+                    <span class="s">"resumo"</span>:      ponto.payload[<span class="s">"resumo"</span>],
+                }
+                <span class="k">for</span> ponto <span class="k">in</span> resultados.points
+            ]
+
+    filtro = {<span class="s">"user_id"</span>: user_id, <span class="s">"resumo"</span>: {<span class="s">"$nin"</span>: [<span class="s">""</span>, <span class="k">None</span>]}}
+    docs = (
+        col_sessoes
+        .find(filtro, {<span class="s">"resumo"</span>: <span class="o">1</span>, <span class="s">"iniciada_em"</span>: <span class="o">1</span>})
+        .sort(<span class="s">"iniciada_em"</span>, -<span class="o">1</span>)
+        .limit(limite)
+    )
+
+    <span class="k">return</span> [
+        {<span class="s">"doc_id"</span>: d[<span class="s">"_id"</span>], <span class="s">"iniciada_em"</span>: d[<span class="s">"iniciada_em"</span>], <span class="s">"resumo"</span>: d[<span class="s">"resumo"</span>]}
+        <span class="k">for</span> d <span class="k">in</span> docs
+    ]
+
+
+<span class="k">def</span> <span class="h">recuperar_mensagens</span>(doc_id: str) -&gt; list[dict]:
+    doc = col_sessoes.find_one({<span class="s">"_id"</span>: doc_id}, {<span class="s">"mensagens"</span>: <span class="o">1</span>})
+    <span class="k">return</span> doc[<span class="s">"mensagens"</span>] <span class="k">if</span> doc <span class="k">else</span> []</div>
+  </div>
+
+  <div class="callout co-info">
+    <div class="ct">MongoDB continua sendo o armazém</div>
+    <p>O MongoDB continua sendo o armazém das mensagens e metadados. O Qdrant é apenas o <strong style="color:var(--text)">índice de busca semântica</strong> — ele guarda o vetor e o payload mínimo (resumo, user_id, data), e retorna o <code>doc_id</code> que aponta para o documento completo no MongoDB.</p>
+  </div>
+</div>
+</div>
+
+<!-- ─── 12: tools/faq.py ─── -->
+<div class="slide" data-title="Passo 9 — faq.py">
+<div class="slide-inner slide-scroll">
+  <span class="bloco-mark bl-b">Bloco B · código</span>
+  <div class="step-marker">
+    <div class="step-num b">9</div>
+    <div class="step-meta">
+      <span class="step-file">app/tools/faq.py</span>
+      <span class="step-obj">Todo o peso da indexação saiu — agora a tool só busca no Qdrant.</span>
+    </div>
+  </div>
+
+  <p class="lead">O arquivo mais simples da etapa. Todo o peso da indexação saiu daqui — agora a tool só gera o embedding da pergunta e busca no Qdrant.</p>
+
+  <div class="code-wrap">
+    <div class="code-header" onclick="toggleCode(this)">
+      <span class="fname">app/tools/faq.py — arquivo completo</span>
+      <div class="code-right"><span class="lbadge">substituir tudo</span><button class="copy-btn" onclick="copyCode(event, this)">Copiar</button><span class="code-toggle-btn">Clique para ver</span></div>
+    </div>
+    <div class="code"><span class="k">from</span> langchain.tools <span class="k">import</span> tool
+<span class="k">from</span> app.vectorstore <span class="k">import</span> qdrant, gerar_embedding, COLLECTION_FAQ
+
+
+<span class="o">@tool</span>
+<span class="k">def</span> <span class="h">faq_retriever</span>(question: str) -&gt; str:
+    <span class="s">"""Busca no FAQ oficial os trechos mais relevantes para responder a pergunta."""</span>
+    vetor = gerar_embedding(question)
+
+    resultados = qdrant.query_points(
+        collection_name=COLLECTION_FAQ,
+        query=vetor,
+        limit=<span class="o">6</span>,
+    )
+
+    <span class="k">if not</span> resultados.points:
+        <span class="k">return</span> <span class="s">"Nenhum trecho relevante encontrado no FAQ."</span>
+
+    <span class="k">return</span> <span class="s">"\n\n"</span>.join(
+        ponto.payload[<span class="s">"page_content"</span>] <span class="k">for</span> ponto <span class="k">in</span> resultados.points
+    )</div>
+  </div>
+
+  <div class="callout co-ok">
+    <div class="ct">Compare com o slide 2</div>
+    <p>Compare com o código antigo (slide 2): de 15 linhas com FAISS, imports pesados e reprocessamento a cada chamada, para <strong style="color:var(--text)">10 linhas limpas</strong>. A busca agora é instantânea — o índice já existe no Qdrant.</p>
+  </div>
+</div>
+</div>
+
+<!-- ─── 13: tools/memoria.py ─── -->
+<div class="slide" data-title="Passo 10 — memoria.py">
+<div class="slide-inner slide-scroll">
+  <span class="bloco-mark bl-b">Bloco B · código</span>
+  <div class="step-marker">
+    <div class="step-num b">10</div>
+    <div class="step-meta">
+      <span class="step-file">app/tools/memoria.py</span>
+      <span class="step-obj">Tratar a data que pode vir como string ISO do Qdrant.</span>
+    </div>
+  </div>
+
+  <p class="lead">Uma pequena mudança: a data <code class="inline">iniciada_em</code> agora pode vir como string ISO do Qdrant (antes era sempre <code class="inline">datetime</code> do MongoDB). Precisamos tratar os dois formatos.</p>
+
+  <div class="code-wrap">
+    <div class="code-header" onclick="toggleCode(this)">
+      <span class="fname">app/tools/memoria.py — arquivo completo</span>
+      <div class="code-right"><span class="lbadge">substituir tudo</span><button class="copy-btn" onclick="copyCode(event, this)">Copiar</button><span class="code-toggle-btn">Clique para ver</span></div>
+    </div>
+    <div class="code"><span class="k">from</span> langchain_core.tools <span class="k">import</span> tool
+<span class="k">from</span> langchain_core.runnables <span class="k">import</span> RunnableConfig
+
+<span class="k">from</span> app.memory <span class="k">import</span> recuperar_historico
+
+
+<span class="o">@tool</span>
+<span class="k">def</span> <span class="h">buscar_historico</span>(busca: str, config: RunnableConfig) -&gt; str:
+    <span class="s">"""Consulta conversas ANTERIORES do usuário (sessões já encerradas).
+
+    Use SOMENTE quando a resposta depende de algo dito numa conversa passada
+    — preferências, decisões ou planos que o usuário mencionou antes.
+    NÃO use para dados que estão no banco (gastos, saldos, eventos): para isso
+    já existem as tools de consulta específicas como query_transactions,
+    total_balance, daily_balance.
+
+    Args:
+        busca: assunto a procurar nos resumos das conversas anteriores.
+    """</span>
+    configuravel = (config <span class="k">or</span> {}).get(<span class="s">"configurable"</span>, {})
+    user_id      = configuravel.get(<span class="s">"user_id"</span>) <span class="k">or</span> configuravel.get(<span class="s">"thread_id"</span>)
+
+    <span class="k">if not</span> user_id:
+        <span class="k">return</span> <span class="s">"Não foi possível identificar o usuário para buscar o histórico."</span>
+
+    historico = recuperar_historico(user_id, busca=busca, limite=<span class="o">3</span>)
+
+    <span class="k">if not</span> historico:
+        <span class="k">return</span> <span class="s">"Nenhuma conversa anterior relevante encontrada."</span>
+
+    linhas = []
+    <span class="k">for</span> h <span class="k">in</span> historico:
+        data = h[<span class="s">"iniciada_em"</span>]
+        <span class="k">if</span> hasattr(data, <span class="s">"strftime"</span>):
+            data_fmt = data.strftime(<span class="s">"%d/%m/%Y"</span>)
+        <span class="k">else</span>:
+            data_fmt = str(data)[:<span class="o">10</span>]
+        linhas.append(<span class="s">f"[{data_fmt}] {h['resumo']}"</span>)
+    <span class="k">return</span> <span class="s">"\n\n"</span>.join(linhas)
+
+
+TOOLS_MEMORIA = [buscar_historico]</div>
+  </div>
+</div>
+</div>
+
+<!-- ─── 14: ingest_faq.py ─── -->
+<div class="slide" data-title="Passo 11 — ingest_faq.py">
+<div class="slide-inner slide-scroll">
+  <span class="bloco-mark bl-c">Bloco C · ingestão e testes</span>
+  <div class="step-marker">
+    <div class="step-num c">11</div>
+    <div class="step-meta">
+      <span class="step-file">app/ingest_faq.py <span style="color:var(--green);font-size:.78rem;">(arquivo novo)</span></span>
+      <span class="step-obj">Indexar o PDF do FAQ no Qdrant — rodar UMA VEZ.</span>
+    </div>
+  </div>
+
+  <p class="lead">Este script lê o PDF do FAQ, divide em chunks, gera embeddings e insere no Qdrant. Precisa rodar <strong style="color:var(--text)">uma vez</strong> — ou sempre que o PDF mudar.</p>
+
+  <div class="code-wrap">
+    <div class="code-header" onclick="toggleCode(this)">
+      <span class="fname">app/ingest_faq.py — arquivo completo</span>
+      <div class="code-right"><span class="lbadge">arquivo completo</span><button class="copy-btn" onclick="copyCode(event, this)">Copiar</button><span class="code-toggle-btn">Clique para ver</span></div>
+    </div>
+    <div class="code"><span class="s">"""
+Script de ingestão do FAQ no Qdrant.
+
+Lê o PDF, faz split em chunks, gera embeddings e insere na collection
+"faq_chunks" do Qdrant. Deve ser executado UMA VEZ (ou sempre que o PDF mudar):
+
+    python -m app.ingest_faq
+
+Ele limpa a collection antes de reinserir, então é seguro rodar várias vezes.
+"""</span>
+
+<span class="k">import</span> uuid
+<span class="k">from</span> langchain_community.document_loaders <span class="k">import</span> PyPDFLoader
+<span class="k">from</span> langchain_text_splitters <span class="k">import</span> RecursiveCharacterTextSplitter
+<span class="k">from</span> qdrant_client <span class="k">import</span> models
+
+<span class="k">from</span> app.config <span class="k">import</span> FAQ_PDF_PATH
+<span class="k">from</span> app.vectorstore <span class="k">import</span> qdrant, gerar_embeddings_batch, COLLECTION_FAQ
+
+CHUNK_SIZE    = <span class="o">700</span>
+CHUNK_OVERLAP = <span class="o">150</span>
+BATCH_SIZE    = <span class="o">50</span>
+
+
+<span class="k">def</span> <span class="h">ingerir_faq</span>() -&gt; int:
+    <span class="s">"""Indexa o PDF do FAQ no Qdrant. Retorna o número de chunks inseridos."""</span>
+    print(<span class="s">f"[ingest] Carregando PDF: {FAQ_PDF_PATH}"</span>)
+    loader = PyPDFLoader(str(FAQ_PDF_PATH))
+    docs = loader.load()
+    print(<span class="s">f"[ingest] {len(docs)} página(s) carregada(s)"</span>)
+
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=CHUNK_SIZE,
+        chunk_overlap=CHUNK_OVERLAP,
+    )
+    chunks = splitter.split_documents(docs)
+    print(<span class="s">f"[ingest] {len(chunks)} chunk(s) gerado(s)"</span>)
+
+    info = qdrant.get_collection(COLLECTION_FAQ)
+    <span class="k">if</span> info.points_count &gt; <span class="o">0</span>:
+        print(<span class="s">f"[ingest] Limpando {info.points_count} ponto(s) existente(s)..."</span>)
+        qdrant.delete(
+            collection_name=COLLECTION_FAQ,
+            points_selector=models.FilterSelector(
+                filter=models.Filter(must=[])
+            ),
+        )
+
+    textos = [chunk.page_content <span class="k">for</span> chunk <span class="k">in</span> chunks]
+
+    <span class="k">for</span> i <span class="k">in</span> range(<span class="o">0</span>, len(textos), BATCH_SIZE):
+        lote_textos = textos[i : i + BATCH_SIZE]
+        lote_chunks = chunks[i : i + BATCH_SIZE]
+
+        print(<span class="s">f"[ingest] Gerando embeddings para chunk {i+1}–{i+len(lote_textos)}..."</span>)
+        vetores = gerar_embeddings_batch(lote_textos)
+
+        pontos = [
+            models.PointStruct(
+                id=str(uuid.uuid4()),
+                vector=vetor,
+                payload={
+                    <span class="s">"page_content"</span>: chunk.page_content,
+                    <span class="s">"page_number"</span>:  chunk.metadata.get(<span class="s">"page"</span>, <span class="o">0</span>),
+                    <span class="s">"source"</span>:       str(chunk.metadata.get(<span class="s">"source"</span>, <span class="s">""</span>)),
+                },
+            )
+            <span class="k">for</span> vetor, chunk <span class="k">in</span> zip(vetores, lote_chunks)
+        ]
+
+        qdrant.upsert(collection_name=COLLECTION_FAQ, points=pontos)
+
+    print(<span class="s">f"[ingest] Concluído! {len(chunks)} chunk(s) indexado(s) no Qdrant."</span>)
+    <span class="k">return</span> len(chunks)
+
+
+<span class="k">if</span> __name__ == <span class="s">"__main__"</span>:
+    ingerir_faq()</div>
+  </div>
+
+  <div class="divider"></div>
+
+  <h3 class="slide-h3">Como rodar</h3>
+  <div class="code-wrap">
+    <div class="code-header" onclick="toggleCode(this)">
+      <span class="fname">Terminal</span>
+      <div class="code-right"><span class="lbadge">executar</span><button class="copy-btn" onclick="copyCode(event, this)">Copiar</button><span class="code-toggle-btn">Clique para ver</span></div>
+    </div>
+    <div class="code">python -m app.ingest_faq</div>
+  </div>
+
+  <div class="callout co-ok">
+    <div class="ct">Output esperado</div>
+    <p>Algo como: <code>[ingest] 3 página(s) carregada(s)</code>, <code>[ingest] 15 chunk(s) gerado(s)</code>, <code>[ingest] Concluído! 15 chunk(s) indexado(s) no Qdrant.</code></p>
+  </div>
+</div>
+</div>
+
+<!-- ─── 15: TESTES ─── -->
+<div class="slide" data-title="Passo 12 — Testar tudo">
+<div class="slide-inner slide-scroll">
+  <span class="bloco-mark bl-c">Bloco C · ingestão e testes</span>
+  <div class="step-marker">
+    <div class="step-num c">12</div>
+    <div class="step-meta">
+      <span class="step-file">Testar tudo</span>
+      <span class="step-obj">Suba o servidor e valide FAQ + memória semântica.</span>
+    </div>
+  </div>
+
+  <p class="lead">Suba o servidor com <code class="inline">uvicorn app.main:app --reload</code> e faça os testes abaixo.</p>
+
+  <div class="test-box" style="margin-bottom:14px;">
+    <div class="tt">▸ Teste 1 — FAQ via Qdrant</div>
+    <table class="qa">
+      <thead><tr><th>#</th><th>O que você faz</th><th>Resposta esperada</th></tr></thead>
+      <tbody>
+        <tr><td class="n">1</td><td><span class="voce">Qual o e-mail do suporte?</span></td><td><span class="ok">Resposta com informações do PDF.</span> Se funcionar, o Qdrant está servindo os chunks corretamente.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="test-box" style="margin-bottom:14px;">
+    <div class="tt">▸ Teste 2 — Memória semântica</div>
+    <table class="qa">
+      <thead><tr><th>#</th><th>O que você faz</th><th>Resposta esperada</th></tr></thead>
+      <tbody>
+        <tr><td class="n">1</td><td><span class="acao"><code>POST /chat</code> · user_id <code>usuario_teste</code></span><br><span class="voce">fiz uma viagem para João Pessoa em agosto</span></td><td>Responde normalmente.</td></tr>
+        <tr><td class="n">2</td><td><span class="acao"><code>POST /sessions/{id}/encerrar</code></span></td><td>Um resumo citando João Pessoa e agosto.</td></tr>
+        <tr><td class="n">3</td><td><span class="acao"><code>POST /chat</code> · <strong>novo session_id</strong>, mesmo user_id</span><br><span class="voce">fiz alguma viagem em agosto?</span></td><td><span class="ok">O agente encontra o resumo sobre João Pessoa</span> — a busca semântica funcionou.</td></tr>
+        <tr><td class="n">4</td><td><span class="voce">qual foi meu destino de férias?</span></td><td><span class="ok">Deve encontrar João Pessoa</span> — "destino de férias" e "viagem" são semanticamente próximos.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="test-box" style="margin-bottom:14px;">
+    <div class="tt">▸ Teste de sinônimos — a diferença real</div>
+    <table class="qa">
+      <thead><tr><th>#</th><th>O que você pergunta</th><th>Resposta esperada</th></tr></thead>
+      <tbody>
+        <tr><td class="n">1</td><td><span class="voce">o que eu te falei sobre a viagem?</span></td><td><span class="ok">Encontra</span> — termo exato.</td></tr>
+        <tr><td class="n">2</td><td><span class="voce">quando eu viajei?</span></td><td><span class="ok">Encontra</span> — "viajei" ≈ "viagem" semanticamente.</td></tr>
+        <tr><td class="n">3</td><td><span class="voce">qual era meu destino?</span></td><td><span class="ok">Encontra</span> — "destino" está no campo semântico de "viagem".</td></tr>
+        <tr><td class="n">4</td><td><span class="voce">o que eu falei sobre o curso de inglês?</span></td><td><span class="ok">Admite que não encontrou</span> — sem inventar.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout co-warn">
+    <div class="ct">Se a memória não funcionar</div>
+    <p>Verifique: (1) você <strong style="color:var(--text)">encerrou a sessão anterior</strong>? Sem encerrar, não há resumo. (2) O Qdrant Cloud está acessível? Teste a URL no navegador. (3) O <code>user_id</code> é o mesmo nas duas sessões? Cada sessão nova tem um <code>session_id</code> diferente — o que liga as sessões é o <code>user_id</code>.</p>
+  </div>
+</div>
+</div>
+
+<!-- ─── 16: CONFERÊNCIA FINAL ─── -->
+<div class="slide" data-title="Conferência final">
+<div class="slide-inner slide-scroll">
+  <span class="gtag">checkpoint</span>
+  <h2 class="sec-title">Conferência <span style="color:var(--green)">final</span></h2>
+  <p class="lead">Marque cada item. Se algum não bater, volte ao passo correspondente antes de seguir.</p>
+
+  <div class="final-check" id="final-checklist">
+    <div class="fc-item"><div class="fc-check">✓</div><div class="fc-text">1 · qdrant-client instalado</div></div>
+    <div class="fc-item"><div class="fc-check">✓</div><div class="fc-text">2 · QDRANT_URL e QDRANT_API_KEY no .env</div></div>
+    <div class="fc-item"><div class="fc-check">✓</div><div class="fc-text">3 · Duas collections criadas no Qdrant Cloud</div></div>
+    <div class="fc-item"><div class="fc-check">✓</div><div class="fc-text">4 · app/vectorstore.py criado</div></div>
+    <div class="fc-item"><div class="fc-check">✓</div><div class="fc-text">5 · app/config.py atualizado (QDRANT obrigatório)</div></div>
+    <div class="fc-item"><div class="fc-check">✓</div><div class="fc-text">6 · app/schemas.py com user_id</div></div>
+    <div class="fc-item"><div class="fc-check">✓</div><div class="fc-text">7 · app/routes/chat.py passando user_id</div></div>
+    <div class="fc-item"><div class="fc-check">✓</div><div class="fc-text">8 · app/graph.py propagando user_id no config</div></div>
+    <div class="fc-item"><div class="fc-check">✓</div><div class="fc-text">9 · app/memory.py com Qdrant + user_id</div></div>
+    <div class="fc-item"><div class="fc-check">✓</div><div class="fc-text">10 · app/tools/faq.py sem FAISS</div></div>
+    <div class="fc-item"><div class="fc-check">✓</div><div class="fc-text">11 · app/tools/memoria.py com formatação de data</div></div>
+    <div class="fc-item"><div class="fc-check">✓</div><div class="fc-text">12 · app/ingest_faq.py criado e executado</div></div>
+    <div class="fc-item"><div class="fc-check">✓</div><div class="fc-text">13 · FAQ respondendo via Qdrant</div></div>
+    <div class="fc-item"><div class="fc-check">✓</div><div class="fc-text">14 · Memória semântica encontrando sinônimos</div></div>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="bridge">
+    <h3 class="slide-h3" style="margin-bottom:10px;">🔮 Próxima etapa — Frontend</h3>
+    <p style="color:var(--muted);font-size:.88rem;line-height:1.7;margin-bottom:14px;">Com a busca semântica funcionando, o assessor entende contexto. Na próxima etapa, vamos construir o <strong style="color:var(--text)">frontend</strong> para o usuário interagir visualmente.</p>
+    <div class="next-pills">
+      <div class="next-pill">interface web</div>
+      <div class="next-pill">chat em tempo real</div>
+      <div class="next-pill">sessões visuais</div>
+    </div>
+  </div>
+</div>
+</div>
+
+</div>
+
+<script>
+// ══════════════════════════ BG CANVAS ══════════════════════════
+const bgCanvas = document.getElementById('bg');
+const bgCtx = bgCanvas.getContext('2d');
+let BW, BH, nodes = [];
+function resizeBg() { BW = bgCanvas.width = window.innerWidth; BH = bgCanvas.height = window.innerHeight; }
+resizeBg(); window.addEventListener('resize', () => { resizeBg(); initNodes(); });
+function initNodes() {
+  nodes = [];
+  const n = Math.floor((BW * BH) / 18000);
+  for (let i = 0; i < n; i++) nodes.push({ x:Math.random()*BW, y:Math.random()*BH, vx:(Math.random()-.5)*.4, vy:(Math.random()-.5)*.4, r:Math.random()*2+1 });
+}
+initNodes();
+function drawBg() {
+  bgCtx.clearRect(0, 0, BW, BH);
+  nodes.forEach(n => { n.x += n.vx; n.y += n.vy; if(n.x<0||n.x>BW)n.vx*=-1; if(n.y<0||n.y>BH)n.vy*=-1; });
+  for (let i = 0; i < nodes.length; i++) for (let j = i+1; j < nodes.length; j++) {
+    const dx=nodes[i].x-nodes[j].x, dy=nodes[i].y-nodes[j].y, d=Math.sqrt(dx*dx+dy*dy);
+    if (d < 120) { bgCtx.beginPath(); bgCtx.moveTo(nodes[i].x,nodes[i].y); bgCtx.lineTo(nodes[j].x,nodes[j].y); bgCtx.strokeStyle=`rgba(124,58,237,${.15*(1-d/120)})`; bgCtx.lineWidth=.5; bgCtx.stroke(); }
+  }
+  nodes.forEach(n => { bgCtx.beginPath(); bgCtx.arc(n.x,n.y,n.r,0,Math.PI*2); bgCtx.fillStyle='rgba(0,229,255,.5)'; bgCtx.fill(); });
+  requestAnimationFrame(drawBg);
+}
+drawBg();
+
+// ══════════════════════════ SLIDE ENGINE ══════════════════════════
+const slideEls = Array.from(document.querySelectorAll('.slide'));
+const TOTAL = slideEls.length;
+let current = 0;
+let maxReached = 0;
+
+const progressBar = document.getElementById('progress-bar');
+const counter     = document.getElementById('slide-counter');
+const titleBar    = document.getElementById('slide-title-bar');
+const navPrev     = document.getElementById('nav-prev');
+const navNext     = document.getElementById('nav-next');
+const dotsEl      = document.getElementById('dots');
+
+slideEls.forEach((_, i) => {
+  const d = document.createElement('div'); d.className = 'dot'; d.onclick = () => goTo(i);
+  dotsEl.appendChild(d);
+});
+
+function goTo(n) {
+  if (n < 0 || n >= TOTAL) return;
+  slideEls.forEach((s, i) => {
+    s.classList.remove('active', 'prev');
+    if (i < n) s.classList.add('prev');
+  });
+  slideEls[n].classList.add('active');
+  current = n;
+  if (n > maxReached) maxReached = n;
+  updateUI();
+  onSlideEnter(current);
+}
+
+function updateUI() {
+  progressBar.style.width = ((current + 1) / TOTAL * 100) + '%';
+  counter.textContent = `${current + 1} / ${TOTAL}`;
+  titleBar.textContent = slideEls[current].dataset.title || '';
+  navPrev.classList.toggle('disabled', current === 0);
+  navNext.classList.toggle('disabled', current === TOTAL - 1);
+  document.querySelectorAll('.dot').forEach((d,i) => {
+    d.classList.toggle('active', i === current);
+    d.classList.toggle('done', i < current);
+  });
+}
+
+navPrev.onclick = () => goTo(current - 1);
+navNext.onclick = () => goTo(current + 1);
+document.addEventListener('keydown', e => {
+  if (e.target.closest('.code')) return;
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') goTo(current + 1);
+  if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   goTo(current - 1);
+});
+requestAnimationFrame(() => goTo(0));
+
+function onSlideEnter(n) {
+  const title = slideEls[n].dataset.title;
+  if (title === 'Conferência final') {
+    const el = document.getElementById('final-checklist');
+    el.classList.remove('play');
+    void el.offsetWidth;
+    el.classList.add('play');
+  }
+}
+
+// ══════════════════════════ CÓDIGO ESCONDIDO ══════════════════════════
+function toggleCode(header) {
+  const wrap = header.parentElement;
+  const open = wrap.classList.toggle('open');
+  const btn = header.querySelector('.code-toggle-btn');
+  if (btn) btn.textContent = open ? 'Ocultar' : 'Clique para ver';
+}
+
+// ══════════════════════════ COPIAR CÓDIGO ══════════════════════════
+function copyCode(evento, botao) {
+  evento.stopPropagation();
+  const wrap = botao.closest('.code-wrap');
+  const texto = wrap.querySelector('.code').textContent;
+
+  const feedback = (ok) => {
+    botao.textContent = ok ? '✓ Copiado' : 'Falhou';
+    botao.classList.toggle('done', ok);
+    setTimeout(() => { botao.textContent = 'Copiar'; botao.classList.remove('done'); }, 1800);
+  };
+
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(texto).then(() => feedback(true), () => feedback(false));
+  } else {
+    const ta = document.createElement('textarea');
+    ta.value = texto;
+    ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    feedback(ok);
+  }
+}
+</script>
+</body>
+</html>

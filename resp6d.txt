@@ -1,0 +1,1 @@
+{"ROUTE":"financeiro","PERGUNTA_ORIGINAL":"Quais restricoes minhas estao cadastradas que valem pra eu pensar em criptomoedas?"}

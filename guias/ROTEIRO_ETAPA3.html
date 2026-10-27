@@ -1,0 +1,1809 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Etapa 3 — A Memória de Longo Prazo</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #050a14;
+  --cyan: #00e5ff;
+  --green: #00ff88;
+  --orange: #ff6b35;
+  --purple: #7c3aed;
+  --pink: #f472b6;
+  --text: #e8f4f8;
+  --muted: #7fa8c0;
+  --card: rgba(255,255,255,0.04);
+  --border: rgba(0,229,255,0.15);
+}
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+html, body { width:100%; height:100%; overflow:hidden; background:var(--bg); color:var(--text); font-family:'IBM Plex Sans',sans-serif; }
+
+#bg { position:fixed; inset:0; z-index:0; opacity:.3; pointer-events:none; }
+
+#progress-bar {
+  position:fixed; top:0; left:0; height:3px; z-index:200;
+  background:linear-gradient(90deg, var(--cyan), var(--purple));
+  transition: width .4s ease;
+}
+
+#topbar {
+  position:fixed; top:0; left:0; right:0; height:52px; z-index:150;
+  background:rgba(5,10,20,.88); backdrop-filter:blur(14px);
+  border-bottom:1px solid var(--border);
+  display:flex; align-items:center; justify-content:space-between; padding:0 32px;
+}
+.tb-label { font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--cyan); letter-spacing:2px; text-transform:uppercase; }
+.tb-counter { font-family:'IBM Plex Mono',monospace; font-size:13px; color:var(--muted); }
+.tb-title { font-family:'IBM Plex Sans',sans-serif; font-size:13px; color:var(--muted); max-width:360px; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+#slides { position:fixed; inset:0; z-index:1; }
+
+.slide {
+  position:absolute; inset:0;
+  display:flex; flex-direction:column; justify-content:flex-start; align-items:center;
+  padding:72px 60px 80px;
+  opacity:0; pointer-events:none;
+  transition: opacity .5s ease, transform .5s ease;
+  transform: translateX(60px);
+  overflow-y: auto;
+}
+.slide.active { opacity:1; pointer-events:all; transform:translateX(0); }
+.slide.prev   { opacity:0; pointer-events:none; transform:translateX(-60px); }
+.slide-inner { width:100%; max-width:1080px; margin:auto 0; }
+
+#nav-prev, #nav-next {
+  position:fixed; top:50%; z-index:200;
+  transform:translateY(-50%);
+  width:48px; height:48px; border-radius:50%;
+  border:1px solid var(--border); background:rgba(5,10,20,.7);
+  backdrop-filter:blur(8px); cursor:pointer;
+  display:flex; align-items:center; justify-content:center;
+  font-size:20px; color:var(--cyan);
+  transition:all .2s; user-select:none;
+}
+#nav-prev { left:16px; }
+#nav-next { right:16px; }
+#nav-prev:hover, #nav-next:hover { background:rgba(0,229,255,.12); border-color:var(--cyan); }
+#nav-prev.disabled, #nav-next.disabled { opacity:.25; pointer-events:none; }
+
+#dots { position:fixed; bottom:18px; left:50%; transform:translateX(-50%); display:flex; gap:6px; z-index:200; flex-wrap:wrap; max-width:70%; justify-content:center; }
+.dot { width:7px; height:7px; border-radius:50%; background:var(--muted); opacity:.4; cursor:pointer; transition:all .3s; }
+.dot.active { background:var(--cyan); opacity:1; transform:scale(1.3); }
+.dot.done { background:var(--green); opacity:.8; }
+
+.tag  { font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--cyan);   letter-spacing:3px; text-transform:uppercase; margin-bottom:10px; display:block; }
+.gtag { font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--green);  letter-spacing:3px; text-transform:uppercase; margin-bottom:10px; display:block; }
+.ptag { font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--purple); letter-spacing:3px; text-transform:uppercase; margin-bottom:10px; display:block; }
+.otag { font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--orange); letter-spacing:3px; text-transform:uppercase; margin-bottom:10px; display:block; }
+
+h1.hero-title { font-family:'Syne',sans-serif; font-size:clamp(2.2rem,4.6vw,4rem); font-weight:800; line-height:1.08; margin-bottom:20px; }
+h2.sec-title  { font-family:'Syne',sans-serif; font-size:clamp(1.4rem,3vw,2.3rem); font-weight:800; line-height:1.18; margin-bottom:12px; }
+h3.slide-h3   { font-family:'Syne',sans-serif; font-size:1.15rem; font-weight:700; margin-bottom:14px; }
+p.lead { color:var(--muted); font-size:.98rem; line-height:1.7; margin-bottom:22px; }
+
+.badge {
+  display:inline-flex; align-items:center; gap:8px;
+  background:rgba(0,229,255,.08); border:1px solid var(--border);
+  border-radius:20px; padding:6px 16px;
+  font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--cyan); letter-spacing:1px;
+  margin-bottom:26px; width:fit-content;
+}
+.badge::before { content:''; width:7px; height:7px; background:var(--green); border-radius:50%; animation:pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(1.5)} }
+
+.hero-q {
+  background:linear-gradient(135deg,rgba(0,229,255,.06),rgba(124,58,237,.06));
+  border:1px solid rgba(0,229,255,.2); border-left:4px solid var(--cyan);
+  border-radius:12px; padding:20px 26px; font-size:1.02rem; color:var(--text);
+  max-width:780px; margin-top:6px;
+  animation:fadeUp .8s ease both .3s;
+}
+@keyframes fadeUp { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:translateY(0)} }
+
+.card { background:var(--card); border:1px solid var(--border); border-radius:16px; padding:22px; }
+.g2 { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+.g3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; }
+@media(max-width:680px){.g2,.g3{grid-template-columns:1fr}}
+
+.pill-row { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:24px; }
+.pill { background:rgba(0,255,136,.07); border:1px solid rgba(0,255,136,.25); border-radius:20px; padding:5px 14px; font-size:12px; color:var(--green); font-family:'IBM Plex Mono',monospace; }
+
+.bridge { background:linear-gradient(135deg,rgba(0,229,255,.05),rgba(124,58,237,.05)); border:1px solid rgba(0,229,255,.2); border-radius:14px; padding:22px 26px; }
+
+/* ═══ MARCADOR DE BLOCO ═══ */
+.bloco-mark {
+  display:inline-flex; align-items:center; gap:10px; margin-bottom:14px;
+  font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:2.5px; text-transform:uppercase;
+  border-radius:20px; padding:5px 15px;
+}
+.bl-a { background:rgba(0,229,255,.09);  border:1px solid rgba(0,229,255,.35);  color:var(--cyan); }
+.bl-b { background:rgba(255,107,53,.09); border:1px solid rgba(255,107,53,.35); color:var(--orange); }
+.bl-c { background:rgba(0,255,136,.08);  border:1px solid rgba(0,255,136,.32);  color:var(--green); }
+
+/* ═══ TABELA ═══ */
+.tbl { width:100%; border-collapse:collapse; font-size:.82rem; }
+.tbl th { text-align:left; font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:1.5px; text-transform:uppercase; color:var(--cyan); padding:9px 12px; border-bottom:1px solid var(--border); white-space:nowrap; }
+.tbl td { padding:10px 12px; border-bottom:1px solid rgba(255,255,255,.05); color:var(--muted); vertical-align:top; line-height:1.5; }
+.tbl td strong, .tbl td code { color:var(--text); }
+.tbl td code { font-family:'IBM Plex Mono',monospace; background:rgba(0,0,0,.3); padding:1px 6px; border-radius:4px; font-size:.78rem; }
+.tbl tbody tr:hover td { background:rgba(0,229,255,.03); }
+.tbl tr.sep-a td { background:rgba(0,229,255,.05); }
+.tbl tr.sep-b td { background:rgba(255,107,53,.05); }
+.tbl tr.sep-c td { background:rgba(0,255,136,.04); }
+
+/* ═══ CÓDIGO ═══ */
+.code {
+  background:rgba(0,0,0,.42); border:1px solid var(--border); border-radius:10px;
+  padding:14px 18px; font-family:'IBM Plex Mono',monospace; font-size:.74rem;
+  line-height:1.7; overflow-x:auto; white-space:pre; color:#bfe4f2;
+}
+.code .k { color:var(--pink); }
+.code .s { color:var(--green); }
+.code .c { color:var(--muted); font-style:italic; }
+.code .h { color:var(--cyan); font-weight:500; }
+.code .o { color:var(--orange); }
+.code .del { color:#ff8fa3; }
+
+.code-wrap { border:1px solid var(--border); border-radius:9px; overflow:hidden; margin-bottom:14px; transition:border-color .2s, box-shadow .2s; }
+.code-wrap.open { border-color:var(--cyan); box-shadow:0 0 0 1px rgba(0,229,255,.08); }
+.code-header { display:flex; justify-content:space-between; align-items:center; padding:9px 14px; background:rgba(0,0,0,.55); border-bottom:1px solid var(--border); cursor:pointer; user-select:none; transition:background .15s; gap:12px; }
+.code-header:hover { background:rgba(0,229,255,.06); }
+.code-header .fname { font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--cyan); }
+.code-right { display:flex; align-items:center; gap:10px; flex-shrink:0; }
+.code-header .lbadge { font-family:'IBM Plex Mono',monospace; font-size:9.5px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; }
+.code-toggle-btn {
+  font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:.5px;
+  color:var(--cyan); border:1px solid var(--border); border-radius:20px; padding:3px 11px;
+  white-space:nowrap; transition:.2s; background:rgba(0,229,255,.05);
+}
+.code-toggle-btn::before { content:'▸ '; }
+.code-wrap.open .code-toggle-btn { color:var(--bg); background:var(--green); border-color:var(--green); font-weight:600; }
+.code-wrap.open .code-toggle-btn::before { content:'▾ '; }
+.copy-btn {
+  font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:.5px;
+  color:var(--purple); border:1px solid rgba(124,58,237,.4); border-radius:20px; padding:3px 11px;
+  white-space:nowrap; transition:.2s; background:rgba(124,58,237,.08); cursor:pointer;
+  display:none;
+}
+.copy-btn:hover { background:rgba(124,58,237,.2); color:var(--pink); }
+.copy-btn.done { color:var(--bg); background:var(--green); border-color:var(--green); font-weight:600; }
+.code-wrap.open .copy-btn { display:inline-block; }
+.code-wrap .code { display:none; border:none; border-radius:0; }
+.code-wrap.open .code { display:block; animation:codeIn .28s ease; }
+@keyframes codeIn { from{opacity:0;transform:translateY(-6px)} to{opacity:1;transform:translateY(0)} }
+
+/* ═══ PASSOS ═══ */
+.step-marker { display:flex; align-items:center; gap:16px; margin-bottom:18px; }
+.step-num {
+  font-family:'Syne',sans-serif; font-weight:800; font-size:1.6rem;
+  width:52px; height:52px; border-radius:14px; display:flex; align-items:center; justify-content:center;
+  background:rgba(0,229,255,.08); border:1px solid var(--border); color:var(--cyan); flex-shrink:0;
+}
+.step-num.b { background:rgba(255,107,53,.08); border-color:rgba(255,107,53,.3); color:var(--orange); }
+.step-num.c { background:rgba(0,255,136,.07); border-color:rgba(0,255,136,.3); color:var(--green); }
+.step-meta { display:flex; flex-direction:column; gap:2px; }
+.step-file { font-family:'IBM Plex Mono',monospace; font-size:.92rem; color:var(--text); }
+.step-obj { font-size:.78rem; color:var(--muted); }
+
+.callout { border-left:3px solid; border-radius:0 8px 8px 0; padding:12px 16px; margin:12px 0 0; font-size:.83rem; line-height:1.6; }
+.callout .ct { font-family:'IBM Plex Mono',monospace; font-weight:500; font-size:9.5px; text-transform:uppercase; letter-spacing:1.5px; margin-bottom:5px; }
+.callout p { margin:0; color:var(--muted); font-size:.83rem; }
+.callout p + p { margin-top:8px; }
+.callout code { font-family:'IBM Plex Mono',monospace; background:rgba(0,0,0,.3); padding:1px 6px; border-radius:4px; color:var(--text); font-size:.78rem; }
+.co-ok   { border-color:var(--green);  background:rgba(0,255,136,.05); }
+.co-ok .ct { color:var(--green); }
+.co-warn { border-color:var(--orange); background:rgba(255,107,53,.05); }
+.co-warn .ct { color:var(--orange); }
+.co-info { border-color:var(--purple); background:rgba(124,58,237,.06); }
+.co-info .ct { color:#c4b5fd; }
+.co-err  { border-color:#ff4d6d; background:rgba(255,77,109,.06); }
+.co-err .ct { color:#ff8fa3; }
+
+/* ═══ TESTES ═══ */
+.test-box { background:rgba(0,255,136,.04); border:1px solid rgba(0,255,136,.22); border-radius:12px; padding:16px 20px; margin-bottom:12px; }
+.test-box .tt { font-family:'Syne',sans-serif; font-weight:800; font-size:.88rem; color:var(--green); margin-bottom:8px; display:flex; align-items:center; gap:8px; }
+.test-box ol, .test-box ul { margin-left:18px; }
+.test-box li { font-size:.83rem; color:var(--muted); line-height:1.65; margin-bottom:4px; }
+.test-box li strong, .test-box li code { color:var(--text); }
+.test-box code { font-family:'IBM Plex Mono',monospace; background:rgba(0,0,0,.3); padding:1px 6px; border-radius:4px; font-size:.78rem; }
+.test-box p { font-size:.83rem; color:var(--muted); line-height:1.65; }
+
+/* ═══ TESTE CONVERSACIONAL (pergunta → resposta esperada) ═══ */
+.qa { width:100%; border-collapse:collapse; font-size:.82rem; margin-top:8px; }
+.qa th { text-align:left; font-family:'IBM Plex Mono',monospace; font-size:9.5px; letter-spacing:1.5px; text-transform:uppercase; color:var(--green); padding:8px 10px; border-bottom:1px solid rgba(0,255,136,.25); }
+.qa td { padding:10px; border-bottom:1px solid rgba(255,255,255,.06); color:var(--muted); vertical-align:top; line-height:1.55; font-size:.82rem; }
+.qa td.n { color:var(--green); font-family:'IBM Plex Mono',monospace; width:26px; text-align:center; }
+.qa tr:last-child td { border-bottom:none; }
+.voce {
+  color:var(--text); font-family:'IBM Plex Mono',monospace; font-size:.78rem;
+  background:rgba(0,229,255,.08); border:1px solid rgba(0,229,255,.22);
+  border-radius:6px; padding:3px 9px; display:inline-block; line-height:1.45;
+}
+.acao { color:var(--text); font-size:.8rem; }
+.qa .ok  { color:var(--green); font-weight:500; }
+.qa .nao { color:var(--orange); font-weight:500; }
+.qa code { font-family:'IBM Plex Mono',monospace; background:rgba(0,0,0,.3); padding:1px 6px; border-radius:4px; color:var(--text); font-size:.76rem; }
+
+/* ═══ CHECKLIST ANIMADA ═══ */
+.final-check { display:flex; flex-direction:column; gap:8px; margin-bottom:18px; }
+.fc-item {
+  display:flex; align-items:center; gap:12px; padding:9px 16px;
+  background:var(--card); border:1px solid var(--border); border-radius:10px;
+  opacity:0; transform:translateX(-16px);
+}
+.final-check.play .fc-item { animation:fcIn .5s ease forwards; }
+.final-check.play .fc-item:nth-child(1){animation-delay:.04s}
+.final-check.play .fc-item:nth-child(2){animation-delay:.14s}
+.final-check.play .fc-item:nth-child(3){animation-delay:.24s}
+.final-check.play .fc-item:nth-child(4){animation-delay:.34s}
+.final-check.play .fc-item:nth-child(5){animation-delay:.44s}
+.final-check.play .fc-item:nth-child(6){animation-delay:.54s}
+.final-check.play .fc-item:nth-child(7){animation-delay:.64s}
+.final-check.play .fc-item:nth-child(8){animation-delay:.74s}
+.final-check.play .fc-item:nth-child(9){animation-delay:.84s}
+.final-check.play .fc-item:nth-child(10){animation-delay:.94s}
+@keyframes fcIn { to{opacity:1;transform:translateX(0)} }
+.fc-check { width:20px; height:20px; border-radius:50%; border:1px solid var(--green); color:var(--green); flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:11px; }
+.fc-text { font-size:.82rem; color:var(--text); font-family:'IBM Plex Mono',monospace; }
+
+/* ═══ ANTES / DEPOIS ═══ */
+.yn { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+@media(max-width:680px){ .yn{ grid-template-columns:1fr; } }
+.yn-col { border-radius:14px; padding:18px 20px; }
+.yn-yes { background:rgba(0,255,136,.05); border:1px solid rgba(0,255,136,.22); }
+.yn-no  { background:rgba(255,107,53,.05); border:1px solid rgba(255,107,53,.22); }
+.yn-col h4 { font-family:'Syne',sans-serif; font-size:.92rem; margin-bottom:12px; }
+.yn-col li { list-style:none; font-size:.82rem; color:var(--muted); line-height:1.55; padding:5px 0 5px 20px; position:relative; }
+.yn-yes li::before { content:'✓'; position:absolute; left:0; color:var(--green); }
+.yn-no  li::before { content:'✕'; position:absolute; left:0; color:var(--orange); }
+
+.next-pills { display:flex; flex-wrap:wrap; gap:10px; }
+.next-pill { font-family:'IBM Plex Mono',monospace; font-size:11.5px; padding:8px 15px; border-radius:20px; background:rgba(124,58,237,.08); border:1px solid rgba(124,58,237,.3); color:var(--pink); }
+
+.slide-scroll { overflow-y:auto; }
+.divider { height:1px; background:var(--border); margin:18px 0; }
+
+code.inline { font-family:'IBM Plex Mono',monospace; color:var(--cyan); background:rgba(0,229,255,.06); padding:1px 7px; border-radius:5px; font-size:.86em; }
+
+/* ═══ CICLO DE VIDA ═══ */
+.ciclo { display:flex; align-items:stretch; gap:8px; flex-wrap:wrap; margin:10px 0 6px; }
+.ci-step {
+  flex:1; min-width:132px; border-radius:12px; padding:14px 14px;
+  background:var(--card); border:1px solid var(--border);
+  font-family:'IBM Plex Mono',monospace; font-size:.72rem; color:var(--muted); line-height:1.5;
+}
+.ci-step .ci-n { display:block; font-size:.68rem; letter-spacing:1.5px; margin-bottom:6px; opacity:.75; }
+.ci-step .ci-t { display:block; font-size:.86rem; color:var(--text); margin-bottom:5px; font-family:'Syne',sans-serif; font-weight:700; }
+.ci-a { border-color:rgba(0,229,255,.4);  background:rgba(0,229,255,.06); }
+.ci-a .ci-n { color:var(--cyan); }
+.ci-b { border-color:rgba(255,107,53,.4); background:rgba(255,107,53,.06); }
+.ci-b .ci-n { color:var(--orange); }
+.ci-c { border-color:rgba(0,255,136,.35); background:rgba(0,255,136,.05); }
+.ci-c .ci-n { color:var(--green); }
+
+/* ═══ CADEIA CAUSAL ═══ */
+.cadeia { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:12px 0 4px; }
+.cd-box {
+  flex:1; min-width:150px; border-radius:10px; padding:13px 15px; text-align:center;
+  background:rgba(255,77,109,.06); border:1px solid rgba(255,77,109,.28);
+  font-family:'IBM Plex Mono',monospace; font-size:.74rem; color:#ffb3c1; line-height:1.5;
+}
+.cd-box.fim { background:rgba(255,77,109,.14); border-color:rgba(255,77,109,.5); color:#ff8fa3; font-weight:600; }
+.cd-arrow { color:#ff8fa3; font-size:1.3rem; flex-shrink:0; }
+@media(max-width:780px){ .cd-arrow{ transform:rotate(90deg); } }
+
+/* ═══ FLUXO DE AGENTES ═══ */
+.agflow { display:flex; align-items:stretch; gap:10px; flex-wrap:wrap; margin:6px 0 4px; }
+.agnode {
+  flex:1; min-width:140px; border-radius:12px; padding:14px 16px;
+  font-family:'IBM Plex Mono',monospace; font-size:.76rem; text-align:center;
+  background:var(--card); border:1px solid var(--border); color:var(--muted);
+}
+.agnode .an-name { font-size:.86rem; color:var(--text); display:block; margin-bottom:6px; }
+.agnode.has  { background:rgba(0,255,136,.06); border-color:rgba(0,255,136,.35); }
+.agnode.has .an-name { color:var(--green); }
+.agnode.hasnt { background:rgba(255,107,53,.05); border-color:rgba(255,107,53,.25); }
+.agnode.hasnt .an-name { color:var(--orange); }
+</style>
+</head>
+<body>
+
+<canvas id="bg"></canvas>
+<div id="progress-bar"></div>
+
+<div id="topbar">
+  <span class="tb-label">⬡ Etapa 3 — Memória de Longo Prazo</span>
+  <span class="tb-title" id="slide-title-bar"></span>
+  <span class="tb-counter" id="slide-counter"></span>
+</div>
+
+<div id="nav-prev">←</div>
+<div id="nav-next">→</div>
+<div id="dots"></div>
+
+<div id="slides">
+
+<!-- ─── 0: HERO ─── -->
+<div class="slide active" data-title="Abertura">
+<div class="slide-inner">
+  <div class="badge">SESSÃO · RESUMO · MEMÓRIA DE LONGO PRAZO</div>
+  <h1 class="hero-title">O assessor que<br><span style="color:var(--orange)">lembra</span> de <span style="color:var(--cyan)">ontem</span>.</h1>
+  <p class="lead" style="max-width:740px;">Seu assessor já lembra do que foi dito <strong style="color:var(--text)">nesta conversa</strong> — isso é o <code class="inline">MemorySaver</code>. Mas se o aluno fechar o navegador e voltar amanhã, tudo se perdeu. Nesta etapa você constrói a memória que sobrevive ao fechar a aba.</p>
+  <div class="hero-q">📌 <strong>Três perguntas guiam a aula inteira:</strong> quem controla o <code class="inline">session_id</code>? Como uma conversa é <strong>encerrada</strong> e vira um resumo? E como um agente <strong>recupera</strong> esse resumo depois?</div>
+  <div class="pill-row" style="margin-top:22px;">
+    <div class="pill">🧱 11 passos, 3 blocos</div>
+    <div class="pill">✅ cada bloco com teste</div>
+    <div class="pill">📋 código pronto para copiar</div>
+    <div class="pill">🍃 MongoDB rodando</div>
+  </div>
+  <div class="callout co-warn" style="max-width:740px;">
+    <div class="ct">Pré-requisitos</div>
+    <p>A Etapa 2 precisa estar concluída: o servidor sobe com <code>uvicorn app.main:app --reload</code>, o <code>/docs</code> abre e o <code>POST /chat</code> já chama o grafo de verdade. Você também precisa do MongoDB no ar e da variável <code>MONGODB_URI</code> no <code>.env</code>.</p>
+  </div>
+</div>
+</div>
+
+<!-- ─── 1: DOIS HISTÓRICOS ─── -->
+<div class="slide" data-title="O problema — dois históricos">
+<div class="slide-inner slide-scroll">
+  <span class="otag">o motivador</span>
+  <h2 class="sec-title">Existem <span style="color:var(--orange)">dois</span> históricos — e é fácil confundir</h2>
+  <p class="lead">Quase todo bug desta etapa nasce de tratar os dois como se fossem a mesma coisa. Eles têm tempo de vida, lugar de armazenamento e forma de acesso completamente diferentes.</p>
+
+  <div class="card" style="padding:0;overflow:hidden;">
+    <table class="tbl">
+      <thead><tr><th></th><th>Conversa atual</th><th>Conversas antigas</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Onde mora</strong></td><td><code>estado["messages"]</code> (RAM)</td><td>MongoDB, coleção <code>sessoes</code></td></tr>
+        <tr><td><strong>Quem gerencia</strong></td><td><code>MemorySaver</code> + <code>thread_id</code></td><td><code>app/memory.py</code></td></tr>
+        <tr><td><strong>Vive quanto</strong></td><td>até o servidor reiniciar</td><td>para sempre</td></tr>
+        <tr><td><strong>Como o agente acessa</strong></td><td>automático — já chega no prompt</td><td><strong>só chamando uma tool</strong></td></tr>
+        <tr><td><strong>Formato</strong></td><td>mensagens literais</td><td>resumo gerado por LLM</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout co-info">
+    <div class="ct">A confusão clássica</div>
+    <p>"Se o estado já tem o histórico, por que preciso de uma tool?" — Porque o histórico que está no estado é <strong style="color:var(--text)">só o desta conversa</strong>. O que aconteceu semana passada não está em lugar nenhum do estado: está no Mongo, e alguém precisa ir buscar.</p>
+  </div>
+
+  <div class="callout co-warn">
+    <div class="ct">E tem um detalhe que ninguém percebe até quebrar</div>
+    <p>A conversa antiga não vira memória sozinha. Ela precisa ser <strong style="color:var(--text)">encerrada</strong> para virar resumo. Hoje, no seu projeto, <strong style="color:var(--text)">nada encerra sessão nenhuma</strong> — e é por isso que metade desta aula é sobre uma rota que ainda não existe.</p>
+  </div>
+</div>
+</div>
+
+<!-- ─── 2: CICLO DE VIDA ─── -->
+<div class="slide" data-title="O ciclo de vida de uma memória">
+<div class="slide-inner slide-scroll">
+  <span class="ptag">a espinha dorsal da aula</span>
+  <h2 class="sec-title">A vida de uma <span style="color:var(--cyan)">memória</span>, do nascimento ao resgate</h2>
+  <p class="lead">Cinco momentos. As cores marcam os três blocos da aula — e você vai perceber que os momentos ③ e ④ simplesmente <strong style="color:var(--text)">não existem</strong> no projeto hoje.</p>
+
+  <div class="ciclo">
+    <div class="ci-step ci-a">
+      <span class="ci-n">① BLOCO A</span>
+      <span class="ci-t">Nasce</span>
+      O front sorteia um UUID e manda em cada POST /chat
+    </div>
+    <div class="ci-step ci-a">
+      <span class="ci-n">② JÁ EXISTE</span>
+      <span class="ci-t">Vive</span>
+      salvar_mensagem() grava cada turno no documento
+    </div>
+    <div class="ci-step ci-b">
+      <span class="ci-n">③ BLOCO B</span>
+      <span class="ci-t">Encerra</span>
+      O usuário clica "nova sessão" → POST /sessions/{id}/encerrar
+    </div>
+    <div class="ci-step ci-b">
+      <span class="ci-n">④ BLOCO B</span>
+      <span class="ci-t">Resume</span>
+      O LLM condensa a conversa em 2–4 frases e grava
+    </div>
+    <div class="ci-step ci-c">
+      <span class="ci-n">⑤ BLOCO C</span>
+      <span class="ci-t">Recupera</span>
+      buscar_historico() acha o resumo numa conversa futura
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="g2">
+    <div class="card">
+      <h3 class="slide-h3" style="font-size:1rem;">🔑 A regra que amarra tudo</h3>
+      <p style="color:var(--muted);font-size:.86rem;line-height:1.65;">O momento ⑤ só enxerga documentos que passaram pelo ④. A função <code class="inline">recuperar_historico()</code> filtra por resumo não-vazio — conversa sem resumo é invisível para a memória. Por isso a ordem da aula é essa: <strong style="color:var(--text)">não adianta ensinar a buscar antes de existir o que buscar</strong>.</p>
+    </div>
+    <div class="card">
+      <h3 class="slide-h3" style="font-size:1rem;">🧭 Onde o script antigo fazia isso</h3>
+      <p style="color:var(--muted);font-size:.86rem;line-height:1.65;">No <code class="inline">while True</code>, o momento ③ era o usuário digitar "sair". O laço via a palavra, chamava <code class="inline">encerrar_sessao()</code> e imprimia o resumo. Ao migrar para HTTP o laço sumiu — e levou junto o único ponto do sistema que fechava conversas. Ninguém percebeu porque <strong style="color:var(--text)">não dá erro</strong>: só nunca funciona.</p>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ─── 3: O MAPA ─── -->
+<div class="slide" data-title="O Mapa da Etapa">
+<div class="slide-inner slide-scroll">
+  <span class="tag">antes de escrever a primeira linha</span>
+  <h2 class="sec-title">Onze passos, <span style="color:var(--cyan)">três blocos</span></h2>
+  <p class="lead">Dois arquivos novos; o resto é acrescentar peças no que já existe. Use esta tabela como mapa — volte a ela sempre que se perder.</p>
+  <div class="card" style="padding:0;overflow:hidden;">
+    <table class="tbl">
+      <thead><tr><th>#</th><th>Arquivo</th><th>O que muda</th></tr></thead>
+      <tbody>
+        <tr class="sep-a"><td colspan="3"><strong style="color:var(--cyan)">BLOCO A — CONTROLAR O SESSION_ID</strong></td></tr>
+        <tr><td><strong>1</strong></td><td><code>app/graph.py</code></td><td>remover o <code>session_id = "id_usuario"</code> herdado do modo script</td></tr>
+        <tr><td><strong>2</strong></td><td><code>frontend/app.js</code></td><td>entender o bug: o botão "nova sessão" não trocava o id de verdade</td></tr>
+        <tr class="sep-b"><td colspan="3"><strong style="color:var(--orange)">BLOCO B — ENCERRAR E GERAR O RESUMO</strong></td></tr>
+        <tr><td><strong>3</strong></td><td><code>app/memory.py</code></td><td><code>_doc_id_da_sessao()</code> — achar a sessão aberta mesmo após reiniciar</td></tr>
+        <tr><td><strong>4</strong></td><td><code>app/routes/sessions.py</code></td><td><span style="color:var(--green)">novo</span> — <code>POST /sessions/{id}/encerrar</code></td></tr>
+        <tr><td><strong>5</strong></td><td><code>app/main.py</code></td><td>registrar o router novo</td></tr>
+        <tr><td><strong>6</strong></td><td><code>frontend/app.js</code></td><td>o botão chama a rota antes de trocar o id (+ a correção do passo 2)</td></tr>
+        <tr class="sep-c"><td colspan="3"><strong style="color:var(--green)">BLOCO C — RECUPERAR O RESUMO</strong></td></tr>
+        <tr><td><strong>7</strong></td><td><code>app/tools/memoria.py</code></td><td><span style="color:var(--green)">novo</span> — o <code>tool_mongodb.py</code> da raiz, corrigido</td></tr>
+        <tr><td><strong>8</strong></td><td><code>app/memory.py</code></td><td>corrigir o filtro de <code>recuperar_historico()</code></td></tr>
+        <tr><td><strong>9</strong></td><td><code>app/graph.py</code></td><td>registrar a tool nos agentes + repassar o <code>config</code></td></tr>
+        <tr><td><strong>10</strong></td><td><code>app/prompts.py</code></td><td>ensinar o <strong>roteador</strong> a usar a tool</td></tr>
+        <tr><td><strong>11</strong></td><td><code>app/prompts.py</code></td><td>ensinar os <strong>especialistas</strong> a usar a tool</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="callout co-warn">
+    <div class="ct">Regra de ouro</div>
+    <p>Não avance de bloco sem o teste do bloco anterior passar. Se o Bloco B quebrar e você já tiver feito o C, não vai saber se o problema é a rota, o prompt ou o filtro do Mongo.</p>
+  </div>
+</div>
+</div>
+
+<!-- ─── 4: BLOCO A — CONCEITO ─── -->
+<div class="slide" data-title="Quem controla o session_id">
+<div class="slide-inner slide-scroll">
+  <span class="bloco-mark bl-a">Bloco A · conceito</span>
+  <h2 class="sec-title">Quem controla o <span style="color:var(--cyan)">session_id</span>?</h2>
+  <p class="lead">Resposta curta: <strong style="color:var(--text)">o navegador</strong>. E essa é a maior inversão desta migração inteira.</p>
+
+  <div class="yn" style="margin-bottom:18px;">
+    <div class="yn-col yn-no">
+      <h4 style="color:var(--orange)">Antes — o script decidia</h4>
+      <div class="code" style="border:none;background:rgba(0,0,0,.3);font-size:.72rem;">session_id = <span class="s">"id_usuario"</span>
+iniciar_sessao(session_id)
+
+<span class="k">while</span> <span class="k">True</span>:
+    user_input = input(<span class="s">"&gt; "</span>)
+    ...</div>
+      <p style="color:var(--muted);font-size:.8rem;line-height:1.55;margin-top:10px;">Uma constante no código. Um usuário só, uma conversa só, para sempre.</p>
+    </div>
+    <div class="yn-col yn-yes">
+      <h4 style="color:var(--green)">Agora — o navegador decide</h4>
+      <div class="code" style="border:none;background:rgba(0,0,0,.3);font-size:.72rem;"><span class="c">// frontend/app.js</span>
+id = crypto.randomUUID();
+localStorage.setItem(KEY, id);
+
+<span class="c">// e vai em cada requisição:</span>
+body: JSON.stringify({ pergunta, session_id })</div>
+      <p style="color:var(--muted);font-size:.8rem;line-height:1.55;margin-top:10px;">Cada aba tem o seu. Vários usuários ao mesmo tempo, no mesmo servidor.</p>
+    </div>
+  </div>
+
+  <h3 class="slide-h3">O <span style="color:var(--cyan)">session_id</span> faz dois trabalhos ao mesmo tempo</h3>
+  <div class="card" style="padding:0;overflow:hidden;margin-bottom:14px;">
+    <table class="tbl">
+      <thead><tr><th>Papel</th><th>Onde</th><th>Para quê</th></tr></thead>
+      <tbody>
+        <tr><td><code>thread_id</code> do checkpointer</td><td><code>graph.py</code>, no <code>config</code></td><td>memória <strong>curta</strong> — o grafo lembrar do turno anterior</td></tr>
+        <tr><td>chave da sessão no Mongo</td><td><code>memory.py</code></td><td>memória <strong>longa</strong> — o documento com mensagens e resumo</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout co-info">
+    <div class="ct">A limitação que fica para depois</div>
+    <p>Como o front sorteia um UUID novo a cada "nova sessão", o <code>session_id</code> identifica a <strong style="color:var(--text)">conversa</strong>, não a <strong style="color:var(--text)">pessoa</strong>. Isso significa que uma conversa nunca vai achar a anterior — cada uma tem id diferente. A solução é o front mandar <em>dois</em> identificadores: um <code>user_id</code> fixo no localStorage e um <code>session_id</code> por conversa. Não faremos isso hoje; a tool do Bloco C já fica preparada, com <code>user_id</code> e fallback para <code>thread_id</code>.</p>
+  </div>
+</div>
+</div>
+
+<!-- ─── 5: PASSOS 1 e 2 ─── -->
+<div class="slide" data-title="Passos 1 e 2 — limpar o resíduo do script">
+<div class="slide-inner slide-scroll">
+  <span class="bloco-mark bl-a">Bloco A · passos 1 e 2</span>
+  <div class="step-marker">
+    <div class="step-num">1</div>
+    <div class="step-meta">
+      <span class="step-file">app/graph.py — rodapé</span>
+      <span class="step-obj">Apagar as duas linhas que criam lixo no banco a cada boot.</span>
+    </div>
+  </div>
+
+  <p class="lead">No fim do <code class="inline">graph.py</code> sobraram duas linhas do modo script. Elas rodam no <strong style="color:var(--text)">import</strong> do módulo — ou seja, toda vez que o uvicorn sobe, e a cada <code class="inline">--reload</code>.</p>
+
+  <div class="callout co-err" style="margin-top:0;margin-bottom:14px;">
+    <div class="ct">O estrago é visível no banco</div>
+    <p>Num projeto de exemplo, essas duas linhas tinham criado <strong style="color:var(--text)">68 documentos</strong> com <code>session_id: "id_usuario"</code>, dos quais 63 completamente vazios — poluindo exatamente a coleção que o <code>buscar_historico</code> vai consultar no Bloco C.</p>
+  </div>
+
+  <div class="code-wrap">
+    <div class="code-header" onclick="toggleCode(this)">
+      <span class="fname">app/graph.py — trocar o bloco LOOP por este comentário</span>
+      <div class="code-right"><span class="lbadge">apagar 2 linhas</span><button class="copy-btn" onclick="copyCode(event, this)">Copiar</button><span class="code-toggle-btn">Clique para ver</span></div>
+    </div>
+    <div class="code"><span class="c"># ==============================================================================
+# LOOP — removido na migração para a API
+# ------------------------------------------------------------------------------
+# Aqui existiam duas linhas herdadas do modo script:
+#
+#     session_id = "id_usuario"
+#     iniciar_sessao(session_id)
+#
+# Elas rodavam no IMPORT do módulo, ou seja, toda vez que o uvicorn subia (e a
+# cada --reload). O resultado era um documento novo com session_id "id_usuario"
+# no MongoDB a cada boot, quase sempre vazio, poluindo a coleção que o
+# buscar_historico consulta.
+#
+# Não fazem falta: salvar_mensagem() já chama iniciar_sessao() por conta
+# própria, e o session_id agora chega em cada requisição HTTP.
+# ==============================================================================</span></div>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="step-marker">
+    <div class="step-num">2</div>
+    <div class="step-meta">
+      <span class="step-file">frontend/app.js — o bug do botão "nova sessão"</span>
+      <span class="step-obj">O botão trocava o id na tela, mas não no que era enviado.</span>
+    </div>
+  </div>
+
+  <div class="callout co-err" style="margin-top:0;margin-bottom:14px;">
+    <div class="ct">Ache o bug antes de ler a resposta</div>
+    <p>A função grava no <code>localStorage</code> e atualiza a tela. O que ela <strong style="color:var(--text)">não</strong> faz?</p>
+    <div class="code" style="margin-top:8px;"><span class="k">function</span> <span class="h">iniciarNovaSessao</span>() {
+  <span class="k">const</span> id = gerarSessionId();
+  localStorage.setItem(SESSION_STORAGE_KEY, id);
+  exibirSessionId(id);
+  thread.innerHTML = <span class="s">""</span>;
+  ...
+}
+
+<span class="c">// mais abaixo no arquivo, executado UMA vez ao carregar a página:</span>
+<span class="k">let</span> sessionId = obterOuCriarSessionId();</div>
+    <p style="margin-top:8px;">Ela nunca reatribui <code>sessionId</code>. Essa variável recebe valor uma única vez, quando a página carrega — e é ela que vai no corpo do <code>POST /chat</code>. Escrever no <code>localStorage</code> só afeta o <strong style="color:var(--text)">próximo carregamento</strong>.</p>
+    <p><strong style="color:var(--text)">Sintoma:</strong> você clica em "nova sessão", a tela limpa, aparece um id novo no cabeçalho — e o servidor continua recebendo o id antigo. As duas conversas se misturam num documento só.</p>
+  </div>
+
+  <div class="callout co-ok">
+    <div class="ct">A correção completa vem no Passo 6</div>
+    <p>Como a mesma função também vai chamar a rota de encerrar, escrevemos ela inteira de uma vez no Bloco B. Por ora, guarde a lição: <strong style="color:var(--text)">localStorage é persistência, variável é estado em uso.</strong> Trocar um não troca o outro.</p>
+  </div>
+
+  <div class="test-box" style="margin-top:16px;">
+    <div class="tt">🗣️ Teste do Bloco A — veja o bug acontecer</div>
+    <p style="margin-bottom:4px;">Este teste é para <strong style="color:var(--text)">falhar</strong>. Rode agora, guarde o resultado, e repita no fim do Bloco B — aí ele passa. Abra o navegador e converse:</p>
+    <table class="qa">
+      <thead><tr><th>#</th><th>O que você faz</th><th>O que deve acontecer</th></tr></thead>
+      <tbody>
+        <tr><td class="n">1</td><td><span class="voce">gastei 50 reais no mercado</span></td><td>Confirma o registro do gasto.</td></tr>
+        <tr><td class="n">2</td><td><span class="voce">sobre o que a gente estava falando?</span></td><td><span class="ok">Ele lembra</span> e cita o mercado. Isso prova que a memória curta funciona.</td></tr>
+        <tr><td class="n">3</td><td><span class="acao">clique em <strong>nova sessão</strong></span></td><td>A tela limpa e o id muda no cabeçalho.</td></tr>
+        <tr><td class="n">4</td><td><span class="voce">sobre o que a gente estava falando?</span></td><td><span class="nao">HOJE ele ainda lembra do mercado</span> — e não deveria, porque é uma conversa nova. Esse é o bug do Passo 2.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout co-info" style="margin-top:10px;">
+      <div class="ct">Por que ele ainda lembra</div>
+      <p>O botão trocou o id na tela e no <code>localStorage</code>, mas não na variável <code>sessionId</code> — o navegador continua enviando o id antigo, e para o servidor é a mesma conversa. O conserto vem no Passo 6.</p>
+    </div>
+    <div class="callout co-ok" style="margin-top:10px;">
+      <div class="ct">Confira também o Passo 1, sem código</div>
+      <p>Abra o MongoDB Compass na coleção <code>assessor.sessoes</code> e filtre por <code>{"session_id": "id_usuario"}</code>. Anote quantos documentos aparecem, reinicie o servidor e conte de novo: o número tem que ficar <strong style="color:var(--text)">parado</strong>. Se cresceu, as duas linhas do modo script ainda estão lá.</p>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ─── 6: POR QUE A ROTA NOVA ─── -->
+<div class="slide" data-title="Por que precisamos de uma rota nova">
+<div class="slide-inner slide-scroll">
+  <span class="bloco-mark bl-b">Bloco B · o motivador</span>
+  <h2 class="sec-title">Por que <span style="color:var(--orange)">precisamos</span> de uma rota nova</h2>
+  <p class="lead">Esta é a pergunta mais importante do bloco. A resposta tem duas partes: uma sobre o que se perdeu na migração, e outra sobre uma cadeia de consequências que ninguém vê acontecer.</p>
+
+  <h3 class="slide-h3">1. O <code style="color:var(--orange)">while True</code> levou o "sair" embora</h3>
+  <p style="color:var(--muted);font-size:.88rem;line-height:1.7;margin-bottom:8px;">No script, o laço fazia <strong style="color:var(--text)">duas</strong> coisas: lia a pergunta <em>e</em> vigiava se o usuário queria sair.</p>
+  <div class="code" style="margin-bottom:16px;"><span class="k">while</span> <span class="k">True</span>:
+    user_input = input(<span class="s">"&gt; "</span>)
+    <span class="k">if</span> user_input.lower() <span class="k">in</span> (<span class="s">"sair"</span>, <span class="s">"fim"</span>, <span class="s">"tchau"</span>):     <span class="c">← o encerramento morava aqui</span>
+        resumo = encerrar_sessao(session_id)
+        print(<span class="s">f"Resumo da sessão: {resumo}"</span>)
+        <span class="k">break</span>
+    resposta = executar_fluxo_assessor(user_input, session_id)</div>
+  <p style="color:var(--muted);font-size:.88rem;line-height:1.7;margin-bottom:6px;">Em HTTP não existe laço. Cada mensagem é uma requisição independente, e o servidor não tem como saber que a pessoa "acabou" — ela simplesmente para de mandar requisições. Então o encerramento precisa virar um <strong style="color:var(--text)">evento explícito</strong>: alguém tem que <em>dizer</em> que acabou. Esse alguém é o botão "nova sessão", e o jeito de ele dizer é uma rota.</p>
+
+  <div class="divider"></div>
+
+  <h3 class="slide-h3">2. A cadeia que quebra em silêncio</h3>
+  <div class="cadeia">
+    <div class="cd-box">não existe rota de encerrar</div>
+    <div class="cd-arrow">→</div>
+    <div class="cd-box">nenhuma sessão é encerrada</div>
+    <div class="cd-arrow">→</div>
+    <div class="cd-box">nenhum resumo é gerado</div>
+    <div class="cd-arrow">→</div>
+    <div class="cd-box fim">buscar_historico devolve<br>sempre vazio</div>
+  </div>
+  <p style="color:var(--muted);font-size:.86rem;line-height:1.65;margin-top:14px;">Repare que <strong style="color:var(--text)">nada aqui dá erro</strong>. O <code class="inline">/chat</code> responde 200, as mensagens são gravadas no Mongo, o agente chama a tool corretamente — e a tool responde, com toda a honestidade, "Nenhuma conversa anterior relevante encontrada". Você poderia passar horas depurando o prompt do agente sem nunca desconfiar que o problema está três camadas abaixo, numa rota que não existe.</p>
+
+  <div class="callout co-ok">
+    <div class="ct">Por que uma rota, e não um jeito automático</div>
+    <p>Duas alternativas foram descartadas. <strong style="color:var(--text)">Encerrar a cada mensagem</strong> não serve: o resumo custa uma chamada de LLM, e você pagaria por turno. <strong style="color:var(--text)">Encerrar por inatividade</strong> exige um agendador rodando em segundo plano — complexidade que não cabe agora. A rota explícita é a opção mais simples que resolve o problema, e deixa a porta aberta para as outras duas depois.</p>
+  </div>
+
+  <div class="callout co-warn">
+    <div class="ct">O que ainda vai ficar de fora</div>
+    <p>Quem simplesmente <strong style="color:var(--text)">fecha a aba</strong> nunca aciona o botão — essa conversa fica aberta e não vira resumo. É uma limitação conhecida, e o conserto (um <code>sendBeacon</code> no <code>beforeunload</code>, ou uma faxina periódica) fica para outra aula.</p>
+  </div>
+</div>
+</div>
+
+<!-- ─── 7: O QUE É ENCERRAR ─── -->
+<div class="slide" data-title="O que é encerrar uma sessão">
+<div class="slide-inner slide-scroll">
+  <span class="bloco-mark bl-b">Bloco B · conceito</span>
+  <h2 class="sec-title">Encerrar = transformar conversa em <span style="color:var(--orange)">resumo</span></h2>
+  <p class="lead">A função <code class="inline">encerrar_sessao()</code> já existe no <code class="inline">memory.py</code> — nunca foi chamada, mas está pronta. Vale entender o que ela faz antes de expô-la numa rota.</p>
+
+  <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px;">
+    <table class="tbl">
+      <thead><tr><th>Passo</th><th>O que acontece</th><th>Custo</th></tr></thead>
+      <tbody>
+        <tr><td><strong>1</strong></td><td>Carrega o documento da sessão no MongoDB</td><td>1 leitura</td></tr>
+        <tr><td><strong>2</strong></td><td>Formata as mensagens em texto corrido</td><td>—</td></tr>
+        <tr><td><strong>3</strong></td><td>Pede ao LLM um resumo de 2–4 frases</td><td><strong style="color:var(--orange)">1 chamada de LLM</strong></td></tr>
+        <tr><td><strong>4</strong></td><td>Grava o resumo no campo <code>resumo</code></td><td>1 escrita</td></tr>
+        <tr><td><strong>5</strong></td><td>Remove a sessão do cache <code>_sessoes_ativas</code></td><td>—</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3 class="slide-h3">Por que guardar o <span style="color:var(--cyan)">resumo</span>, e não a conversa inteira?</h3>
+  <div class="g2" style="margin-bottom:14px;">
+    <div class="card">
+      <p style="color:var(--muted);font-size:.85rem;line-height:1.65;"><strong style="color:var(--text)">Custo de busca.</strong> Varrer 200 resumos de 3 linhas é barato. Varrer 200 conversas inteiras, não — e o resultado ainda teria que caber no prompt do agente depois.</p>
+    </div>
+    <div class="card">
+      <p style="color:var(--muted);font-size:.85rem;line-height:1.65;"><strong style="color:var(--text)">Sinal x ruído.</strong> O resumo já vem filtrado: guarda decisões e preferências, descarta "ok", "obrigado", "pode ser". É isso que você quer que o assessor lembre.</p>
+    </div>
+  </div>
+  <p style="color:var(--muted);font-size:.86rem;line-height:1.65;">As mensagens completas continuam salvas no mesmo documento — a função <code class="inline">recuperar_mensagens(doc_id)</code> existe para quando você precisar do detalhe literal. O resumo é o <strong style="color:var(--text)">índice</strong>; as mensagens são o conteúdo.</p>
+
+  <div class="callout co-info">
+    <div class="ct">Uma consequência de privacidade que vale discutir em aula</div>
+    <p>O <code>salvar_mensagem()</code> grava a versão <strong style="color:var(--text)">anonimizada</strong> da pergunta — e é exatamente por isso que ele permanece dentro do <code>graph.py</code>, depois do guardrail de entrada. Logo, o resumo é gerado a partir de texto anonimizado e pode conter tokens como <code>[PII_CPF_a3f9c1]</code>.</p>
+    <p>E esses tokens são gerados com UUID aleatório a cada anonimização: o mapa que os traduz morre junto com a requisição. Um resumo de março com <code>[PII_CPF_a3f9c1]</code> é <strong style="color:var(--text)">irrecuperável para sempre</strong>. Isso é privacidade por esquecimento ou é um resumo quebrado? Decida de propósito — a saída mais simples é limpar os tokens antes de salvar o resumo.</p>
+  </div>
+</div>
+</div>
+
+<!-- ─── 8: PASSO 3 ─── -->
+<div class="slide" data-title="Passo 3 — memory.py">
+<div class="slide-inner slide-scroll">
+  <span class="bloco-mark bl-b">Bloco B · passo 3</span>
+  <div class="step-marker">
+    <div class="step-num b">3</div>
+    <div class="step-meta">
+      <span class="step-file">app/memory.py → _doc_id_da_sessao()</span>
+      <span class="step-obj">Fazer o encerramento sobreviver a um --reload do servidor.</span>
+    </div>
+  </div>
+
+  <p class="lead">Hoje <code class="inline">encerrar_sessao()</code> descobre qual documento fechar olhando <code class="inline">_sessoes_ativas</code> — um dicionário Python, na RAM do processo.</p>
+
+  <div class="callout co-err" style="margin-top:0;margin-bottom:14px;">
+    <div class="ct">O que acontece com --reload ligado</div>
+    <p>Você salva um arquivo, o uvicorn reinicia, o dicionário volta vazio. A partir daí: <code>iniciar_sessao()</code> acha que é conversa nova e cria <strong style="color:var(--text)">outro documento</strong> para a mesma conversa; e <code>encerrar_sessao()</code> não acha nada para fechar, devolvendo <code>""</code> — a rota responderia <strong style="color:var(--text)">200 OK com resumo nulo</strong>, sem erro nenhum. Silêncio é o pior tipo de falha.</p>
+  </div>
+
+  <p class="lead" style="margin-bottom:12px;">A correção é dar uma segunda chance: se não está no cache, procure no Mongo a sessão mais recente que ainda não tem resumo.</p>
+
+  <div class="code-wrap">
+    <div class="code-header" onclick="toggleCode(this)">
+      <span class="fname">app/memory.py — nova função, antes de iniciar_sessao()</span>
+      <div class="code-right"><span class="lbadge">acrescentar</span><button class="copy-btn" onclick="copyCode(event, this)">Copiar</button><span class="code-toggle-btn">Clique para ver</span></div>
+    </div>
+    <div class="code"><span class="k">def</span> <span class="h">_doc_id_da_sessao</span>(session_id: str) -&gt; str | <span class="k">None</span>:
+    <span class="s">"""
+    Descobre o documento da sessão EM ANDAMENTO deste usuário, ou None.
+
+    Olha primeiro o cache em memória (_sessoes_ativas). Se não achar, procura
+    no MongoDB a sessão mais recente que ainda não foi encerrada — isto é, com
+    resumo vazio.
+
+    Essa segunda tentativa existe porque _sessoes_ativas vive na RAM do
+    processo: um --reload do uvicorn no meio da conversa esvazia o dicionário.
+    Sem ela, iniciar_sessao() criaria um documento novo para a mesma conversa a
+    cada reinício, e encerrar_sessao() não acharia nada para resumir — sem erro
+    nenhum, apenas silêncio.
+    """</span>
+    doc_id = _sessoes_ativas.get(session_id)
+    <span class="k">if</span> doc_id:
+        <span class="k">return</span> doc_id
+
+    doc = col_sessoes.find_one(
+        {<span class="s">"session_id"</span>: session_id, <span class="s">"resumo"</span>: {<span class="s">"$in"</span>: [<span class="s">""</span>, <span class="k">None</span>]}},
+        {<span class="s">"_id"</span>: <span class="o">1</span>},
+        sort=[(<span class="s">"iniciada_em"</span>, -<span class="o">1</span>)],
+    )
+    <span class="k">if not</span> doc:
+        <span class="k">return</span> <span class="k">None</span>
+
+    _sessoes_ativas[session_id] = doc[<span class="s">"_id"</span>]   <span class="c"># repovoa o cache</span>
+    <span class="k">return</span> doc[<span class="s">"_id"</span>]</div>
+  </div>
+
+  <p class="lead" style="margin-bottom:12px;">Agora troque os três lugares que liam <code class="inline">_sessoes_ativas</code> direto:</p>
+
+  <div class="code-wrap">
+    <div class="code-header" onclick="toggleCode(this)">
+      <span class="fname">app/memory.py — as três substituições</span>
+      <div class="code-right"><span class="lbadge">substituir</span><button class="copy-btn" onclick="copyCode(event, this)">Copiar</button><span class="code-toggle-btn">Clique para ver</span></div>
+    </div>
+    <div class="code"><span class="k">def</span> <span class="h">iniciar_sessao</span>(session_id: str) -&gt; <span class="k">None</span>:
+    <span class="s">"""
+    Garante que existe um documento de sessão aberto para este session_id.
+    Se já houver um (em memória ou no Mongo), não faz nada.
+    """</span>
+    <span class="k">if</span> _doc_id_da_sessao(session_id):        <span class="c"># ← era: if session_id in _sessoes_ativas</span>
+        <span class="k">return</span>
+
+    <span class="c"># ... o resto da função continua igual (insert_one etc.) ...</span>
+
+
+<span class="k">def</span> <span class="h">salvar_mensagem</span>(session_id: str, role: str, content: str) -&gt; <span class="k">None</span>:
+    <span class="s">""" Adiciona uma mensagem ao array de mensagens da sessão ativa. """</span>
+    iniciar_sessao(session_id)
+    doc_id = _doc_id_da_sessao(session_id)   <span class="c"># ← era: _sessoes_ativas[session_id]</span>
+
+    <span class="c"># ... o resto continua igual ...</span>
+
+
+<span class="k">def</span> <span class="h">encerrar_sessao</span>(session_id: str) -&gt; str:   <span class="c"># ← anotação de tipo acrescentada</span>
+    <span class="s">"""..."""</span>
+    doc_id = _doc_id_da_sessao(session_id)   <span class="c"># ← era: _sessoes_ativas.get(session_id)</span>
+
+    <span class="k">if not</span> doc_id:
+        <span class="k">return</span> <span class="s">""</span>
+
+    <span class="c"># ... o resto continua igual ...</span></div>
+  </div>
+
+  <div class="callout co-info" style="margin-top:16px;">
+    <div class="ct">Este passo ainda não dá para testar sozinho</div>
+    <p>A correção só aparece quando existir a rota que chama o <code>encerrar_sessao()</code> — ou seja, no Passo 4. Guarde a expectativa: no teste do fim deste bloco, você vai salvar um arquivo no meio da conversa (para forçar o <code>--reload</code>) e o resumo tem que sair mesmo assim.</p>
+  </div>
+</div>
+</div>
+
+<!-- ─── 9: PASSOS 4 e 5 ─── -->
+<div class="slide" data-title="Passos 4 e 5 — a rota nova">
+<div class="slide-inner slide-scroll">
+  <span class="bloco-mark bl-b">Bloco B · passos 4 e 5</span>
+  <div class="step-marker">
+    <div class="step-num b">4</div>
+    <div class="step-meta">
+      <span class="step-file">app/routes/sessions.py <span style="color:var(--green);font-size:.78rem;">(arquivo novo)</span></span>
+      <span class="step-obj">O equivalente HTTP de digitar "sair".</span>
+    </div>
+  </div>
+
+  <div class="callout co-ok" style="margin-top:0;margin-bottom:14px;">
+    <div class="ct">O projeto já esperava por isso</div>
+    <p>Duas pistas foram deixadas na Etapa 2: o <code>SessionResponse</code> em <code>app/schemas.py</code> existe e nunca foi usado, e o <code>main.py</code> tem o comentário <em>"quando sessions.py existir, acrescente…"</em>. Você não está inventando uma camada nova — está preenchendo um espaço reservado.</p>
+  </div>
+
+  <div class="code-wrap">
+    <div class="code-header" onclick="toggleCode(this)">
+      <span class="fname">app/routes/sessions.py</span>
+      <div class="code-right"><span class="lbadge">arquivo completo</span><button class="copy-btn" onclick="copyCode(event, this)">Copiar</button><span class="code-toggle-btn">Clique para ver</span></div>
+    </div>
+    <div class="code"><span class="s">"""
+As rotas do ciclo de vida da sessão.
+
+Antes: quem encerrava a sessão era o `while True` do script — o usuário digitava
+"sair", o laço chamava encerrar_sessao() e imprimia o resumo. Na migração para a
+API esse laço sumiu, e com ele o único ponto do sistema que fechava sessões.
+Resultado: nenhuma sessão ganhava resumo, e como buscar_historico() só enxerga
+sessões COM resumo, a memória de longo prazo ficava permanentemente vazia.
+
+Agora: o navegador decide. O botão "nova sessão" chama POST /sessions/{id}/encerrar
+antes de sortear um novo UUID — é o equivalente HTTP de digitar "sair".
+
+Repare que este arquivo, como o chat.py, é fino de propósito: ele recebe o
+pedido, chama quem sabe fazer o trabalho (app.memory) e devolve o resultado.
+Toda a lógica de resumo mora no memory.py.
+"""</span>
+
+<span class="k">from</span> fastapi <span class="k">import</span> APIRouter
+
+<span class="k">from</span> app.memory <span class="k">import</span> encerrar_sessao, iniciar_sessao
+<span class="k">from</span> app.schemas <span class="k">import</span> SessionResponse
+
+router = APIRouter(prefix=<span class="s">"/sessions"</span>, tags=[<span class="s">"sessions"</span>])
+
+
+<span class="o">@router.post</span>(<span class="s">"/{session_id}/iniciar"</span>, response_model=SessionResponse)
+<span class="k">def</span> <span class="h">iniciar</span>(session_id: str) -&gt; SessionResponse:
+    <span class="s">"""
+    Abre uma sessão explicitamente.
+
+    Opcional na prática — salvar_mensagem() já abre a sessão sozinho na primeira
+    mensagem. Existe para o caso de você querer registrar o acesso mesmo que o
+    usuário não chegue a perguntar nada.
+    """</span>
+    iniciar_sessao(session_id)
+    <span class="k">return</span> SessionResponse(session_id=session_id, resumo=<span class="k">None</span>)
+
+
+<span class="o">@router.post</span>(<span class="s">"/{session_id}/encerrar"</span>, response_model=SessionResponse)
+<span class="k">def</span> <span class="h">encerrar</span>(session_id: str) -&gt; SessionResponse:
+    <span class="s">"""
+    Encerra a sessão: gera o resumo via LLM e grava no documento.
+
+    É este resumo que a tool `buscar_historico` vai encontrar depois. Sem passar
+    por aqui, a conversa fica guardada no Mongo mas invisível para a memória de
+    longo prazo — porque recuperar_historico() filtra por resumo não-vazio.
+
+    Devolve resumo=None (e não erro) quando não havia nada a encerrar: sessão
+    inexistente ou sem nenhuma mensagem. Encerrar duas vezes é inofensivo.
+
+    Atenção ao custo: esta rota faz uma chamada de LLM para gerar o resumo.
+    Não a acione a cada mensagem — só ao fim da conversa.
+    """</span>
+    resumo = encerrar_sessao(session_id)
+    <span class="k">return</span> SessionResponse(session_id=session_id, resumo=resumo <span class="k">or</span> <span class="k">None</span>)</div>
+  </div>
+
+  <div class="callout co-info" style="margin-bottom:16px;">
+    <div class="ct">Por que 200 e não 404 quando não há nada a encerrar</div>
+    <p>Encerrar uma sessão que não existe não é erro do cliente — é uma operação <strong style="color:var(--text)">idempotente</strong>. Chamar duas vezes tem que ser inofensivo, porque o navegador pode repetir a chamada (clique duplo, reconexão). Devolvemos <code>resumo: null</code> e o front decide o que mostrar.</p>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="step-marker">
+    <div class="step-num b">5</div>
+    <div class="step-meta">
+      <span class="step-file">app/main.py</span>
+      <span class="step-obj">Registrar o router — e cuidado com a ordem.</span>
+    </div>
+  </div>
+
+  <div class="code-wrap">
+    <div class="code-header" onclick="toggleCode(this)">
+      <span class="fname">app/main.py — duas linhas</span>
+      <div class="code-right"><span class="lbadge">alterar</span><button class="copy-btn" onclick="copyCode(event, this)">Copiar</button><span class="code-toggle-btn">Clique para ver</span></div>
+    </div>
+    <div class="code"><span class="c"># no topo:</span>
+<span class="k">from</span> app.routes <span class="k">import</span> chat, sessions          <span class="c"># ← era: import chat</span>
+
+<span class="c"># ==============================================================================
+# ROTAS
+# Cada arquivo de app/routes/ expõe um `router`, e é aqui que ele entra na
+# aplicação. A ordem importa por causa do mount em "/" lá embaixo: qualquer
+# rota declarada DEPOIS dele nunca seria alcançada.
+# ==============================================================================</span>
+app.include_router(chat.router)
+app.include_router(sessions.router)               <span class="c"># ← novo</span></div>
+  </div>
+
+  <div class="callout co-warn">
+    <div class="ct">A ordem não é detalhe</div>
+    <p>No fim do <code>main.py</code> existe <code>app.mount("/", StaticFiles(...))</code>, que captura tudo que não casou antes. Se você registrar o <code>sessions.router</code> <strong style="color:var(--text)">depois</strong> dele, a rota nunca vai responder — o mount engole a requisição e devolve 404 de arquivo não encontrado.</p>
+  </div>
+
+  <div class="test-box" style="margin-top:16px;">
+    <div class="tt">🗣️ Teste dos Passos 4 e 5 — pelo /docs, sem escrever código</div>
+    <p style="margin-bottom:4px;">Suba o servidor e abra <code>http://localhost:8000/docs</code>. O FastAPI monta uma tela de teste sozinho:</p>
+    <table class="qa">
+      <thead><tr><th>#</th><th>O que você faz</th><th>O que deve acontecer</th></tr></thead>
+      <tbody>
+        <tr><td class="n">1</td><td><span class="acao">olhe a lista de rotas</span></td><td>Aparece uma seção nova, <code>sessions</code>, com <code>POST /sessions/{session_id}/encerrar</code> e <code>/iniciar</code>. <span class="nao">Se não aparecer</span>, o <code>include_router</code> ficou depois do <code>mount("/")</code>.</td></tr>
+        <tr><td class="n">2</td><td><span class="acao">abra a rota <strong>encerrar</strong> → "Try it out" → session_id: <code>teste123</code> → Execute</span></td><td><code>200</code> com <code>{"session_id":"teste123","resumo":null}</code>. É <span class="ok">null porque essa sessão não existe</span> — e isso não pode ser erro.</td></tr>
+        <tr><td class="n">3</td><td><span class="acao">clique em Execute de novo</span></td><td>O mesmo <code>200</code> com <code>resumo: null</code>. Encerrar duas vezes é inofensivo — é o que chamamos de idempotente.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+</div>
+
+<!-- ─── 10: PASSO 6 ─── -->
+<div class="slide" data-title="Passo 6 — o frontend encerra a sessão">
+<div class="slide-inner slide-scroll">
+  <span class="bloco-mark bl-b">Bloco B · passo 6</span>
+  <div class="step-marker">
+    <div class="step-num b">6</div>
+    <div class="step-meta">
+      <span class="step-file">frontend/app.js → iniciarNovaSessao()</span>
+      <span class="step-obj">Fechar a sessão anterior antes de sortear a nova — e corrigir o bug do Passo 2.</span>
+    </div>
+  </div>
+
+  <p class="lead">Agora a função faz três coisas em ordem: <strong style="color:var(--text)">encerra</strong> a sessão antiga, <strong style="color:var(--text)">troca</strong> o id (de verdade, na variável) e <strong style="color:var(--text)">limpa</strong> a tela.</p>
+
+  <div class="code-wrap">
+    <div class="code-header" onclick="toggleCode(this)">
+      <span class="fname">frontend/app.js — substituir iniciarNovaSessao()</span>
+      <div class="code-right"><span class="lbadge">substituir a função</span><button class="copy-btn" onclick="copyCode(event, this)">Copiar</button><span class="code-toggle-btn">Clique para ver</span></div>
+    </div>
+    <div class="code"><span class="c">// Pede ao servidor que feche a sessão: ele gera o resumo via LLM e grava no
+// MongoDB. É esse resumo que a tool buscar_historico vai encontrar no futuro —
+// sem esta chamada, a conversa fica salva mas invisível para a memória longa.
+// Falhar aqui não pode impedir o usuário de começar uma conversa nova, por isso
+// o erro só vai para o console.</span>
+<span class="k">async function</span> <span class="h">encerrarSessaoAtual</span>(id) {
+  <span class="k">try</span> {
+    <span class="k">const</span> resposta = <span class="k">await</span> fetch(
+      <span class="s">`${API_BASE}/sessions/${encodeURIComponent(id)}/encerrar`</span>,
+      { method: <span class="s">"POST"</span> }
+    );
+    <span class="k">if</span> (!resposta.ok) <span class="k">return</span> <span class="k">null</span>;
+    <span class="k">const</span> dados = <span class="k">await</span> resposta.json();
+    <span class="k">return</span> dados.resumo;
+  } <span class="k">catch</span> (erro) {
+    console.warn(<span class="s">"Não foi possível encerrar a sessão anterior:"</span>, erro);
+    <span class="k">return</span> <span class="k">null</span>;
+  }
+}
+
+<span class="k">async function</span> <span class="h">iniciarNovaSessao</span>() {
+  <span class="k">const</span> anterior = sessionId;
+
+  resetButton.disabled = <span class="k">true</span>;
+  setHint(<span class="s">"Encerrando a sessão anterior…"</span>);
+  <span class="k">const</span> resumo = <span class="k">await</span> encerrarSessaoAtual(anterior);
+
+  <span class="k">const</span> id = gerarSessionId();
+  localStorage.setItem(SESSION_STORAGE_KEY, id);
+  <span class="c">// ATENÇÃO: reatribuir a variável é obrigatório. Gravar no localStorage só
+  // afeta o próximo carregamento da página; é `sessionId` que vai no corpo do
+  // POST /chat. Sem esta linha, o botão limpa a tela e mostra um id novo
+  // enquanto o servidor continua recebendo o id antigo.</span>
+  <span class="h">sessionId = id;</span>
+  exibirSessionId(id);
+
+  thread.innerHTML = <span class="s">""</span>;
+  thread.appendChild(threadEmpty);
+  threadEmpty.style.display = <span class="s">"block"</span>;
+  setHint(
+    resumo
+      ? <span class="s">`Sessão anterior encerrada. Resumo: ${resumo}`</span>
+      : <span class="s">"Nova sessão iniciada."</span>
+  );
+  resetButton.disabled = <span class="k">false</span>;
+}</div>
+  </div>
+
+  <div class="g2">
+    <div class="card">
+      <h3 class="slide-h3" style="font-size:.98rem;">Por que <code style="font-size:.85rem">async</code></h3>
+      <p style="color:var(--muted);font-size:.83rem;line-height:1.6;">Gerar o resumo é uma chamada de LLM — leva alguns segundos. Sem <code>await</code>, o front trocaria o id antes da resposta chegar, e o botão pareceria travado. Por isso ele também é desabilitado durante a espera.</p>
+    </div>
+    <div class="card">
+      <h3 class="slide-h3" style="font-size:.98rem;">Por que o erro só vai ao console</h3>
+      <p style="color:var(--muted);font-size:.83rem;line-height:1.6;">Se o servidor estiver fora do ar, o usuário ainda tem o direito de começar uma conversa nova. Perder um resumo é ruim; travar a interface é pior. O <code>catch</code> devolve <code>null</code> e a vida segue.</p>
+    </div>
+  </div>
+
+  <div class="callout co-ok" style="margin-top:14px;">
+    <div class="ct">Brinde pedagógico</div>
+    <p>O <code>setHint()</code> mostra o resumo gerado na tela. É a primeira vez na aula que o aluno <strong style="color:var(--text)">vê</strong> a memória sendo criada — vale parar aqui e ler o resumo em voz alta, comparando com o que foi conversado.</p>
+  </div>
+
+  <div class="test-box" style="margin-top:16px;">
+    <div class="tt">🗣️ Teste do Bloco B — a conversa vira resumo?</div>
+    <p style="margin-bottom:4px;">No navegador, em <code>localhost:8000</code>. O passo 5 é o mesmo do Bloco A — só que agora tem que passar:</p>
+    <table class="qa">
+      <thead><tr><th>#</th><th>O que você faz</th><th>Resposta esperada</th></tr></thead>
+      <tbody>
+        <tr><td class="n">1</td><td><span class="voce">gastei 120 reais numa cadeira de escritório</span></td><td>Confirma o registro.</td></tr>
+        <tr><td class="n">2</td><td><span class="voce">quero economizar em móveis esse semestre</span></td><td>Responde com alguma orientação.</td></tr>
+        <tr><td class="n">3</td><td><span class="acao">clique em <strong>nova sessão</strong></span></td><td>Aparece <strong style="color:var(--text)">"Encerrando a sessão anterior…"</strong> e o botão fica desabilitado por alguns segundos — é o LLM escrevendo o resumo.</td></tr>
+        <tr><td class="n">4</td><td><span class="acao">leia a dica embaixo do campo</span></td><td><span class="ok">"Sessão anterior encerrada. Resumo: …"</span> — e o resumo precisa citar a cadeira e a intenção de economizar. <span class="nao">Se vier só "Nova sessão iniciada."</span>, o resumo não foi gerado.</td></tr>
+        <tr><td class="n">5</td><td><span class="voce">sobre o que a gente estava falando?</span></td><td><span class="ok">Agora ele NÃO lembra</span> da cadeira. É conversa nova de verdade — o bug do Bloco A está corrigido.</td></tr>
+        <tr><td class="n">6</td><td><span class="acao">clique em <strong>nova sessão</strong> outra vez, sem ter conversado nada</span></td><td>"Nova sessão iniciada.", sem resumo e <span class="ok">sem erro</span> — não havia nada para encerrar.</td></tr>
+      </tbody>
+    </table>
+
+    <p style="margin-top:12px;margin-bottom:4px;"><strong style="color:var(--text)">Agora o teste do Passo 3</strong>, que ficou pendente — provocando um reinício no meio da conversa:</p>
+    <table class="qa">
+      <thead><tr><th>#</th><th>O que você faz</th><th>Resposta esperada</th></tr></thead>
+      <tbody>
+        <tr><td class="n">1</td><td><span class="voce">gastei 40 reais no cinema</span></td><td>Confirma o registro.</td></tr>
+        <tr><td class="n">2</td><td><span class="acao">salve qualquer arquivo <code>.py</code> do projeto, sem mudar nada</span></td><td>O terminal mostra <code>Reloading...</code> — o servidor reiniciou e o cache em memória se perdeu.</td></tr>
+        <tr><td class="n">3</td><td><span class="acao">clique em <strong>nova sessão</strong></span></td><td><span class="ok">O resumo aparece mesmo assim</span>, citando o cinema. <span class="nao">Sem o <code>_doc_id_da_sessao()</code></span> viria "Nova sessão iniciada." sem resumo — a falha silenciosa do Passo 3.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+</div>
+
+<!-- ─── 11: PASSOS 7 e 8 ─── -->
+<div class="slide" data-title="Passos 7 e 8 — a tool e a busca">
+<div class="slide-inner slide-scroll">
+  <span class="bloco-mark bl-c">Bloco C · passos 7 e 8</span>
+  <div class="step-marker">
+    <div class="step-num c">7</div>
+    <div class="step-meta">
+      <span class="step-file">app/tools/memoria.py <span style="color:var(--green);font-size:.78rem;">(arquivo novo)</span></span>
+      <span class="step-obj">Trazer o tool_mongodb.py solto na raiz para dentro da estrutura.</span>
+    </div>
+  </div>
+
+  <div class="card" style="padding:0;overflow:hidden;margin-bottom:14px;">
+    <table class="tbl">
+      <thead><tr><th>Problema no original</th><th>Correção</th></tr></thead>
+      <tbody>
+        <tr><td><code>from memory_mongodb import ...</code> — módulo não existe mais</td><td><code>from app.memory import ...</code></td></tr>
+        <tr><td>Está na raiz, fora da convenção do projeto</td><td>Vai para <code>app/tools/</code></td></tr>
+        <tr><td><code>config["configurable"]["thread_id"]</code> estoura <code>KeyError</code></td><td><code>.get()</code> com mensagem clara para o agente</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout co-info" style="margin-top:0;margin-bottom:14px;">
+    <div class="ct">Por que "memoria.py" e não "tools_mongodb.py"</div>
+    <p>Olhe os vizinhos: <code>financeiro.py</code>, <code>agenda.py</code>, <code>faq.py</code>. A convenção nomeia tools pelo <strong style="color:var(--text)">domínio</strong>, não pela tecnologia — repare que <code>financeiro.py</code> não se chama <code>tools_postgres.py</code>. Se amanhã a memória migrar de banco, o nome continua certo e nenhum agente precisa saber da troca.</p>
+  </div>
+
+  <div class="code-wrap">
+    <div class="code-header" onclick="toggleCode(this)">
+      <span class="fname">app/tools/memoria.py</span>
+      <div class="code-right"><span class="lbadge">arquivo completo</span><button class="copy-btn" onclick="copyCode(event, this)">Copiar</button><span class="code-toggle-btn">Clique para ver</span></div>
+    </div>
+    <div class="code"><span class="s">"""
+Tool de memória de longo prazo — consulta conversas ANTERIORES do usuário.
+
+Migração de tool_mongodb.py (raiz) para dentro de app/tools/.
+"""</span>
+
+<span class="k">from</span> langchain_core.tools <span class="k">import</span> tool
+<span class="k">from</span> langchain_core.runnables <span class="k">import</span> RunnableConfig
+
+<span class="k">from</span> app.memory <span class="k">import</span> recuperar_historico
+
+<span class="c"># ==============================================================================
+# POR QUE user_id E NÃO session_id
+# ------------------------------------------------------------------------------
+# O front gera um UUID novo a cada "nova sessão". Esse UUID é a CONVERSA
+# (vira thread_id do checkpointer). Se buscarmos conversas anteriores por ele,
+# o resultado é sempre vazio: cada conversa tem um id diferente da anterior.
+#
+# Para achar o passado precisamos de um identificador ESTÁVEL do usuário —
+# o user_id. Enquanto o front não mandar um, o fallback para thread_id mantém
+# a tool funcionando (e é o suficiente para testar com um id fixo à mão).
+# ==============================================================================</span>
+
+
+<span class="o">@tool</span>
+<span class="k">def</span> <span class="h">buscar_historico</span>(busca: str, config: RunnableConfig) -&gt; str:
+    <span class="s">"""Consulta conversas ANTERIORES do usuário (sessões já encerradas).
+
+    Use SOMENTE quando a resposta depende de algo dito numa conversa passada
+    — preferências, decisões ou planos que o usuário mencionou antes.
+    NÃO use para dados que estão no banco (gastos, saldos, eventos): para isso
+    já existem as tools de consulta específicas como query_transactions,
+    total_balance, daily_balance.
+
+    Args:
+        busca: assunto a procurar nos resumos das conversas anteriores.
+    """</span>
+    configuravel = (config <span class="k">or</span> {}).get(<span class="s">"configurable"</span>, {})
+    user_id      = configuravel.get(<span class="s">"user_id"</span>) <span class="k">or</span> configuravel.get(<span class="s">"thread_id"</span>)
+
+    <span class="k">if not</span> user_id:
+        <span class="k">return</span> <span class="s">"Não foi possível identificar o usuário para buscar o histórico."</span>
+
+    historico = recuperar_historico(user_id, busca=busca, limite=<span class="o">3</span>)
+
+    <span class="k">if not</span> historico:
+        <span class="k">return</span> <span class="s">"Nenhuma conversa anterior relevante encontrada."</span>
+
+    <span class="k">return</span> <span class="s">"\n\n"</span>.join(
+        <span class="s">f"[{h['iniciada_em']:%d/%m/%Y}] {h['resumo']}"</span> <span class="k">for</span> h <span class="k">in</span> historico
+    )
+
+
+TOOLS_MEMORIA = [buscar_historico]</div>
+  </div>
+
+  <div class="callout co-warn" style="margin-bottom:16px;">
+    <div class="ct">O docstring não é decoração</div>
+    <p>O texto entre aspas triplas dentro da função é o que o <strong style="color:var(--text)">LLM lê</strong> para decidir se chama a tool. Vai junto no prompt a cada requisição. Repare que metade dele diz quando <em>não</em> usar — sem isso, o modelo chama a memória para tudo.</p>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="step-marker">
+    <div class="step-num c">8</div>
+    <div class="step-meta">
+      <span class="step-file">app/memory.py → recuperar_historico()</span>
+      <span class="step-obj">Impedir que a conversa de agora volte como "conversa antiga".</span>
+    </div>
+  </div>
+
+  <p class="lead" style="margin-bottom:12px;">A função busca todas as sessões do usuário — inclusive a que está acontecendo agora, cujo <code class="inline">resumo</code> ainda está vazio porque ela não passou pelo Bloco B.</p>
+
+  <div class="code-wrap">
+    <div class="code-header" onclick="toggleCode(this)">
+      <span class="fname">app/memory.py — dentro de recuperar_historico()</span>
+      <div class="code-right"><span class="lbadge">substituir 2 blocos</span><button class="copy-btn" onclick="copyCode(event, this)">Copiar</button><span class="code-toggle-btn">Clique para ver</span></div>
+    </div>
+    <div class="code"><span class="c"># ANTES ────────────────────────────────────────────────────────────
+# filtro = {"session_id": session_id}
+#
+# if busca:
+#     filtro["resumo"] = {"$regex": busca, "$options": "i"}
+# ───────────────────────────────────────────────────────────────────</span>
+
+    <span class="c"># só sessões DESTE usuário que já têm resumo (= já encerradas).
+    # O $nin descarta a sessão em andamento, cujo resumo ainda está vazio —
+    # sem ele a tool devolveria a própria conversa atual como se fosse passado.</span>
+    filtro = {<span class="s">"session_id"</span>: session_id, <span class="s">"resumo"</span>: {<span class="s">"$nin"</span>: [<span class="s">""</span>, <span class="k">None</span>]}}
+
+    <span class="c"># se houver termo de busca, filtra resumos que o contenham (case-insensitive).
+    # Acrescenta ao filtro existente em vez de substituí-lo, senão o $nin acima
+    # se perderia e a sessão atual voltaria para o resultado.</span>
+    <span class="k">if</span> busca:
+        filtro[<span class="s">"resumo"</span>][<span class="s">"$regex"</span>]   = busca
+        filtro[<span class="s">"resumo"</span>][<span class="s">"$options"</span>] = <span class="s">"i"</span></div>
+  </div>
+
+  <div class="callout co-err">
+    <div class="ct">A armadilha dentro da armadilha</div>
+    <p>A versão original fazia <code>filtro["resumo"] = {...}</code> — atribuição, que <strong style="color:var(--text)">substitui</strong>. Se você corrigir só a primeira linha, o <code>$nin</code> é apagado toda vez que houver termo de busca — o bug volta exatamente no caso em que a tool é usada de verdade. As duas mudanças andam juntas.</p>
+  </div>
+</div>
+</div>
+
+<!-- ─── 12: QUEM RECEBE A TOOL ─── -->
+<div class="slide" data-title="Quem recebe a tool">
+<div class="slide-inner slide-scroll">
+  <span class="bloco-mark bl-c">Bloco C · decisão de arquitetura</span>
+  <h2 class="sec-title">Qual agente deve poder <span style="color:var(--green)">lembrar</span>?</h2>
+  <p class="lead">A resposta só aparece quando você olha os <strong style="color:var(--text)">formatos de pergunta</strong> que o usuário faz.</p>
+
+  <div class="card" style="padding:0;overflow:hidden;margin-bottom:18px;">
+    <table class="tbl">
+      <thead><tr><th>O usuário pergunta</th><th>Quem precisa da memória</th><th>Por quê</th></tr></thead>
+      <tbody>
+        <tr><td>"O que eu te falei sobre a viagem?"</td><td><strong style="color:var(--cyan)">roteador</strong></td><td>não existe especialista para isso — sem a tool no roteador, cai em <code>fora_escopo</code></td></tr>
+        <tr><td>"Lembrando da viagem, quanto preciso separar?"</td><td><strong style="color:var(--green)">especialista</strong></td><td>quem <em>responde</em> precisa do conteúdo, não quem <em>roteia</em></td></tr>
+        <tr><td>"Gastei 50 no mercado"</td><td>ninguém</td><td>nada aqui depende do passado</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3 class="slide-h3">A conclusão: <span style="color:var(--green)">os dois</span> — com trabalhos diferentes</h3>
+
+  <div class="agflow">
+    <div class="agnode has"><span class="an-name">roteador</span>buscar_historico</div>
+    <div class="agnode has"><span class="an-name">financeiro</span>5 tools + buscar_historico</div>
+    <div class="agnode has"><span class="an-name">agenda</span>add_event + buscar_historico</div>
+    <div class="agnode hasnt"><span class="an-name">faq</span>só faq_retriever</div>
+    <div class="agnode hasnt"><span class="an-name">orquestrador</span>nenhuma tool</div>
+  </div>
+
+  <div class="callout co-info">
+    <div class="ct">Por que o FAQ fica de fora</div>
+    <p>O FAQ responde sobre as <strong style="color:var(--text)">regras do Assessor.AI</strong> a partir do PDF — políticas, termos, privacidade. Isso é igual para todo mundo. Dar a tool a ele só faria o modelo confundir "as regras do sistema" com "o que você me disse".</p>
+  </div>
+
+  <div class="callout co-warn">
+    <div class="ct">O que isso custa</div>
+    <p>A definição da tool passa a ocupar espaço no prompt de <strong style="color:var(--text)">toda</strong> chamada dos especialistas, e os retornos dela se acumulam no histórico. Memória não é de graça: você troca tokens por continuidade. Vale a pena — mas é uma escolha, não um almoço grátis.</p>
+  </div>
+</div>
+</div>
+
+<!-- ─── 13: PASSO 9 ─── -->
+<div class="slide" data-title="Passo 9 — graph.py">
+<div class="slide-inner slide-scroll">
+  <span class="bloco-mark bl-c">Bloco C · passo 9</span>
+  <div class="step-marker">
+    <div class="step-num c">9</div>
+    <div class="step-meta">
+      <span class="step-file">app/graph.py</span>
+      <span class="step-obj">Registrar a tool nos agentes — e resolver a armadilha do config.</span>
+    </div>
+  </div>
+
+  <div class="code-wrap">
+    <div class="code-header" onclick="toggleCode(this)">
+      <span class="fname">app/graph.py — imports (topo do arquivo)</span>
+      <div class="code-right"><span class="lbadge">acrescentar / alterar</span><button class="copy-btn" onclick="copyCode(event, this)">Copiar</button><span class="code-toggle-btn">Clique para ver</span></div>
+    </div>
+    <div class="code"><span class="k">from</span> langchain_core.messages <span class="k">import</span> RemoveMessage
+<span class="h">from langchain_core.runnables import RunnableConfig</span>          <span class="c"># ← novo</span>
+<span class="k">from</span> app.tools.financeiro <span class="k">import</span> TOOLS
+<span class="k">from</span> app.tools.agenda <span class="k">import</span> TOOLS_AGENDA
+<span class="k">from</span> app.tools.faq <span class="k">import</span> faq_retriever
+<span class="h">from app.tools.memoria import TOOLS_MEMORIA</span>                     <span class="c"># ← novo</span>
+
+<span class="c"># Só salvar_mensagem entra aqui. iniciar_sessao() é chamada por ela mesma, e
+# encerrar_sessao() mudou de camada: virou POST /sessions/{id}/encerrar,
+# em app/routes/sessions.py. O grafo cuida de UM turno; abrir e fechar a
+# conversa é evento de outra natureza, disparado pelo usuário — não por
+# uma pergunta.</span>
+<span class="k">from</span> app.memory <span class="k">import</span> salvar_mensagem                        <span class="c"># ← era: import iniciar_sessao, salvar_mensagem, encerrar_sessao</span></div>
+  </div>
+
+  <div class="callout co-info" style="margin-top:0;margin-bottom:14px;">
+    <div class="ct">Por que salvar_mensagem FICA e encerrar_sessao SAI</div>
+    <p>O critério é a natureza do evento. <code>salvar_mensagem()</code> acontece <strong style="color:var(--text)">a cada turno</strong> — e precisa rodar dentro do grafo porque grava a versão <strong style="color:var(--text)">anonimizada</strong> da pergunta, que só existe depois do guardrail de entrada. Tirá-la daqui significaria persistir o CPF do usuário em texto puro no MongoDB.</p>
+    <p>Já <code>encerrar_sessao()</code> acontece <strong style="color:var(--text)">uma vez por conversa</strong>, disparado pelo usuário, e não tem nada a ver com processar uma pergunta. Um é turno, o outro é ciclo de vida — e por isso moram em camadas diferentes.</p>
+  </div>
+
+  <div class="code-wrap">
+    <div class="code-header" onclick="toggleCode(this)">
+      <span class="fname">app/graph.py — bloco AGENTES</span>
+      <div class="code-right"><span class="lbadge">substituir 3 linhas</span><button class="copy-btn" onclick="copyCode(event, this)">Copiar</button><span class="code-toggle-btn">Clique para ver</span></div>
+    </div>
+    <div class="code"><span class="c"># TOOLS_MEMORIA (buscar_historico) vai para o roteador E para os especialistas,
+# porque os dois usam a memória para coisas diferentes:
+#
+#   roteador     → perguntas que SÓ dependem do passado ("o que eu te falei
+#                  sobre a viagem?"). Não existe especialista para isso; sem a
+#                  tool aqui, a pergunta cairia em fora_escopo.
+#   especialista → perguntas em que o passado é insumo da RESPOSTA ("lembrando
+#                  da viagem, quanto preciso separar?"). O resultado da tool
+#                  nasce dentro do contexto dele e alimenta o JSON de saída.
+#
+# O FAQ fica de fora de propósito: ele responde sobre as regras do Assessor.AI
+# a partir do PDF, não sobre o que este usuário conversou.</span>
+router_app       = create_agent(model=llm_rapido,       tools=<span class="h">TOOLS_MEMORIA</span>,                system_prompt=ROUTER_PROMPT_COMPLETO)
+financeiro_app   = create_agent(model=llm_especialista, tools=<span class="h">TOOLS + TOOLS_MEMORIA</span>,        system_prompt=FINANCEIRO_PROMPT_COMPLETO)
+agenda_app       = create_agent(model=llm_especialista, tools=<span class="h">TOOLS_AGENDA + TOOLS_MEMORIA</span>, system_prompt=AGENDA_PROMPT_COMPLETO)
+orquestrador_app = create_agent(model=llm_rapido,       system_prompt=ORQUESTRADOR_PROMPT_COMPLETO)
+faq_app          = create_agent(model=llm_rapido,       tools=[faq_retriever], system_prompt=FAQ_PROMPT_COMPLETO)</div>
+  </div>
+
+  <div class="divider"></div>
+
+  <h3 class="slide-h3">🪤 A armadilha: o <span style="color:var(--orange)">config</span> que não chega</h3>
+  <p style="color:var(--muted);font-size:.88rem;line-height:1.7;margin-bottom:14px;">A tool precisa saber <em>de quem</em> é o histórico. Ela lê isso do <code class="inline">config["configurable"]</code>. Só que esse config chega em uns agentes e não em outros — e o motivo é <strong style="color:var(--text)">como cada um foi montado no grafo</strong>:</p>
+
+  <div class="yn" style="margin-bottom:16px;">
+    <div class="yn-col yn-yes">
+      <h4 style="color:var(--green)">financeiro e agenda — automático</h4>
+      <p style="color:var(--muted);font-size:.82rem;line-height:1.6;">Entram via <code>grafo.add_node("financeiro", financeiro_app)</code>. Como são <strong style="color:var(--text)">subgrafos</strong>, o LangGraph propaga o config para dentro deles sozinho. Você não escreve nada.</p>
+    </div>
+    <div class="yn-col yn-no">
+      <h4 style="color:var(--orange)">roteador — o config se perde</h4>
+      <p style="color:var(--muted);font-size:.82rem;line-height:1.6;">É chamado <strong style="color:var(--text)">dentro</strong> de uma função Python comum (<code>no_roteador</code>), com um <code>.invoke()</code> à mão. Nada propaga o config para lá. A tool receberia <code>configurable</code> vazio.</p>
+    </div>
+  </div>
+
+  <div class="code-wrap">
+    <div class="code-header" onclick="toggleCode(this)">
+      <span class="fname">app/graph.py — no_roteador()</span>
+      <div class="code-right"><span class="lbadge">substituir as 2 primeiras linhas</span><button class="copy-btn" onclick="copyCode(event, this)">Copiar</button><span class="code-toggle-btn">Clique para ver</span></div>
+    </div>
+    <div class="code"><span class="c"># ANTES ────────────────────────────────────────────────────────────
+# def no_roteador(estado: Estado) -&gt; dict:
+#     saida = router_app.invoke({"messages": list(estado["messages"])})
+# ───────────────────────────────────────────────────────────────────</span>
+
+<span class="k">def</span> <span class="h">no_roteador</span>(estado: Estado, <span class="h">config: RunnableConfig</span>) -&gt; dict:
+    <span class="c"># O `config` é injetado pelo LangGraph nos nós que o declaram na assinatura.
+    # Precisa ser repassado à mão: diferente de financeiro/agenda, que são nós do
+    # grafo (add_node) e herdam o config sozinhos, o router_app é chamado dentro
+    # de uma função comum. Sem esta linha a tool buscar_historico não recebe o
+    # thread_id/user_id e não consegue identificar de quem é o histórico.</span>
+    saida = router_app.invoke({<span class="s">"messages"</span>: list(estado[<span class="s">"messages"</span>])}, <span class="h">config=config</span>)
+    texto = saida[<span class="s">"messages"</span>][-<span class="o">1</span>].text
+
+    <span class="c"># ... resto da função continua igual ...</span></div>
+  </div>
+
+  <div class="callout co-ok">
+    <div class="ct">A lição que fica</div>
+    <p>Declarar <code>config: RunnableConfig</code> na assinatura do nó é o que faz o LangGraph <strong style="color:var(--text)">injetar</strong> o config. Passá-lo no <code>.invoke()</code> é o que faz ele <strong style="color:var(--text)">descer</strong> até a tool. Faltando qualquer uma das duas, a tool responde "não foi possível identificar o usuário" — e o sintoma não aponta para o config em lugar nenhum.</p>
+  </div>
+</div>
+</div>
+
+<!-- ─── 14: PASSO 10 ─── -->
+<div class="slide" data-title="Passo 10 — prompt do roteador">
+<div class="slide-inner slide-scroll">
+  <span class="bloco-mark bl-c">Bloco C · passo 10</span>
+  <div class="step-marker">
+    <div class="step-num c">10</div>
+    <div class="step-meta">
+      <span class="step-file">app/prompts.py → ROUTER_PROMPT</span>
+      <span class="step-obj">Uma tool que ninguém sabe que existe nunca é chamada.</span>
+    </div>
+  </div>
+
+  <div class="callout co-warn" style="margin-top:0;margin-bottom:16px;">
+    <div class="ct">Se você parar no Passo 9, nada acontece</div>
+    <p>Registrar a tool no <code>create_agent()</code> só faz o modelo <em>poder</em> chamá-la. Se o prompt não disser quando usar, ele ignora a tool e responde como antes. É o bug mais frustrante da etapa, porque não dá erro nenhum — só não funciona.</p>
+  </div>
+
+  <p class="lead">Acrescente este bloco no <code class="inline">ROUTER_PROMPT</code>, logo <strong style="color:var(--text)">antes</strong> da seção <code class="inline">### DETECÇÃO DE MÚLTIPLOS DOMÍNIOS</code>:</p>
+
+  <div class="code-wrap">
+    <div class="code-header" onclick="toggleCode(this)">
+      <span class="fname">app/prompts.py — dentro de ROUTER_PROMPT</span>
+      <div class="code-right"><span class="lbadge">nova seção</span><button class="copy-btn" onclick="copyCode(event, this)">Copiar</button><span class="code-toggle-btn">Clique para ver</span></div>
+    </div>
+    <div class="code">### MEMÓRIA DE CONVERSAS ANTERIORES
+Você tem a tool `buscar_historico`, que consulta os RESUMOS de conversas
+ANTERIORES deste usuário (sessões já encerradas).
+
+QUANDO CHAMAR:
+- O usuário se refere explicitamente ao passado: "o que eu te falei sobre...",
+  "lembra que eu comentei...", "na nossa última conversa...", "eu já tinha dito".
+- Você precisa do passado para escolher a rota com segurança.
+
+QUANDO NÃO CHAMAR:
+- Dados que estão no banco — gastos, saldos, extratos, eventos agendados.
+  Isso é trabalho dos especialistas (financeiro/agenda), NÃO da memória.
+- A conversa atual: o histórico recente já está nas mensagens acima.
+
+O QUE FAZER COM O RESULTADO:
+- Se a memória responde sozinha a pergunta, responda direto ao usuário em
+  linguagem natural e NÃO emita ROUTE=.
+- Se a memória apenas esclarece a intenção, use-a para decidir e emita ROUTE=
+  normalmente.
+- Se a tool devolver QUALQUER resumo, você DEVE usar o conteúdo dele na sua
+  resposta. Leia o texto retornado e responda com base nele.
+- Diga que não encontrou APENAS se a tool devolver literalmente
+  "Nenhuma conversa anterior relevante encontrada". NUNCA invente uma conversa
+  passada, e nunca ignore um resumo que a tool trouxe.
+- A `busca` deve ser o SUBSTANTIVO do assunto, como apareceria num resumo
+  ("viagem", "mercado", "relatório"), não o verbo da pergunta ("viajar").</div>
+  </div>
+
+  <div class="callout co-err" style="margin-bottom:16px;">
+    <div class="ct">História real de depuração — leia isto</div>
+    <p>Na primeira versão deste prompt, os exemplos usavam placeholders genéricos: <code>Roteador: Na nossa conversa de [data] você mencionou [conteúdo do resumo].</code></p>
+    <p>Resultado: a tool retornava o resumo <strong style="color:var(--text)">correto</strong> e o roteador respondia "não encontrei registro". O modelo não distinguia o exemplo do caso "achou" do exemplo do caso "não achou" — os dois eram templates com colchetes, visualmente idênticos — e colava no último que tinha lido.</p>
+    <p>A correção foi trocar os placeholders por <strong style="color:var(--text)">conteúdo concreto e inventado</strong>. Por isso os exemplos abaixo falam de "Móveis Prado" e "curso de inglês": dados falsos, mas específicos o bastante para o modelo enxergar a diferença.</p>
+  </div>
+
+  <div class="code-wrap">
+    <div class="code-header" onclick="toggleCode(this)">
+      <span class="fname">app/prompts.py — shots 6 e 7 + montagem</span>
+      <div class="code-right"><span class="lbadge">acrescentar</span><button class="copy-btn" onclick="copyCode(event, this)">Copiar</button><span class="code-toggle-btn">Clique para ver</span></div>
+    </div>
+    <div class="code"><span class="c">#Exemplo 6 — A tool ENCONTROU algo → usar o conteúdo na resposta:</span>
+ROUTER_SHOT_6 = <span class="s">"""
+Usuário: Qual era mesmo a loja que eu te falei?
+Roteador: buscar_historico(busca="loja")
+Tool: [12/03/2026] O usuário comentou que comprou uma cadeira na loja Móveis Prado e achou o frete caro.
+Roteador: Em 12/03 você comentou da Móveis Prado — comprou uma cadeira lá e achou o frete caro."""</span>
+
+<span class="c">#Exemplo 7 — A tool NÃO encontrou nada → admitir, sem inventar:</span>
+ROUTER_SHOT_7 = <span class="s">"""
+Usuário: O que eu te disse sobre o curso de inglês?
+Roteador: buscar_historico(busca="curso de inglês")
+Tool: Nenhuma conversa anterior relevante encontrada.
+Roteador: Não encontrei registro disso nas nossas conversas anteriores. Quer me contar de novo?"""</span>
+
+
+<span class="c"># ── e no final, registre os dois na montagem do prompt ──</span>
+ROUTER_PROMPT_COMPLETO = (
+    ROUTER_PROMPT      + <span class="s">"\n\n"</span> +
+    ROUTER_SHOTS_OPEN  + <span class="s">"\n\n"</span> +
+    ROUTER_SHOT_1      + <span class="s">"\n\n"</span> +
+    ROUTER_SHOT_2      + <span class="s">"\n\n"</span> +
+    ROUTER_SHOT_3      + <span class="s">"\n\n"</span> +
+    ROUTER_SHOT_4      + <span class="s">"\n\n"</span> +
+    ROUTER_SHOT_5      + <span class="s">"\n\n"</span> +
+    <span class="h">ROUTER_SHOT_6      + "\n\n" +</span>
+    <span class="h">ROUTER_SHOT_7      + "\n\n" +</span>
+    ROUTER_SHOTS_CUT
+)</div>
+  </div>
+
+  <div class="test-box">
+    <div class="tt">🗣️ Teste do Passo 10 — o roteador aprendeu a lembrar?</div>
+    <p style="margin-bottom:4px;">Este teste precisa de <strong style="color:var(--text)">uma conversa antiga já encerrada</strong>. Use o <code>/docs</code>, com o mesmo <code>session_id</code> nas duas etapas — chame de <code>aluno01</code>:</p>
+    <table class="qa">
+      <thead><tr><th>#</th><th>O que você faz</th><th>Resposta esperada</th></tr></thead>
+      <tbody>
+        <tr><td class="n">1</td><td><span class="acao"><code>POST /chat</code> · session_id <code>aluno01</code></span><br><span class="voce">vou viajar para Salvador em dezembro</span></td><td>Responde normalmente.</td></tr>
+        <tr><td class="n">2</td><td><span class="acao"><code>POST /sessions/aluno01/encerrar</code></span></td><td>Um <code>resumo</code> que menciona Salvador e dezembro.</td></tr>
+        <tr><td class="n">3</td><td><span class="acao"><code>POST /chat</code> · session_id <code>aluno01</code></span><br><span class="voce">o que eu te falei sobre a viagem?</span></td><td><span class="ok">Cita Salvador e a data</span> da conversa anterior. <span class="nao">Se disser que não encontrou</span>, o prompt não foi lido — confira se os shots 6 e 7 entraram no <code>_COMPLETO</code>.</td></tr>
+        <tr><td class="n">4</td><td><span class="voce">o que eu te disse sobre o curso de inglês?</span></td><td><span class="ok">Admite que não encontrou</span> registro e pergunta se você quer contar. <span class="nao">Se ele inventar</span> uma conversa que nunca houve, reforce a regra "NUNCA invente" no prompt.</td></tr>
+        <tr><td class="n">5</td><td><span class="voce">quanto eu gastei esse mês?</span></td><td>Vai para o <strong>financeiro</strong> e consulta o banco. <span class="nao">Não pode</span> chamar a memória — isso é dado, não lembrança.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout co-warn" style="margin-top:10px;">
+      <div class="ct">Por que fixar o session_id à mão</div>
+      <p>No navegador, cada "nova sessão" sorteia um id diferente — então a conversa nova nunca acharia a antiga. Fixando <code>aluno01</code> nas duas etapas você simula o que o <code>user_id</code> vai fazer de verdade. Guarde esse incômodo: <strong style="color:var(--text)">é exatamente o limite que fecha a aula</strong>.</p>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ─── 15: PASSO 11 ─── -->
+<div class="slide" data-title="Passo 11 — prompt dos especialistas">
+<div class="slide-inner slide-scroll">
+  <span class="bloco-mark bl-c">Bloco C · passo 11</span>
+  <div class="step-marker">
+    <div class="step-num c">11</div>
+    <div class="step-meta">
+      <span class="step-file">app/prompts.py → FINANCEIRO_PROMPT e AGENDA_PROMPT</span>
+      <span class="step-obj">A mesma tool, instrução diferente — e o motivo importa.</span>
+    </div>
+  </div>
+
+  <div class="callout co-info" style="margin-top:0;margin-bottom:16px;">
+    <div class="ct">Por que o texto não pode ser o mesmo do roteador</div>
+    <p>O roteador responde ao usuário em <strong style="color:var(--text)">linguagem natural</strong>. Os especialistas devolvem <strong style="color:var(--text)">JSON</strong> para o orquestrador. Se você copiar o bloco do roteador para cá, o modelo devolve o texto da tool cru e quebra o contrato do JSON. Por isso a frase central deste bloco é: <em>"o resultado da tool é insumo, não resposta"</em>.</p>
+  </div>
+
+  <p class="lead">O <strong style="color:var(--text)">mesmo</strong> bloco entra nos dois prompts, logo antes da seção <code class="inline">### SAÍDA (JSON)</code>:</p>
+
+  <div class="code-wrap">
+    <div class="code-header" onclick="toggleCode(this)">
+      <span class="fname">app/prompts.py — em FINANCEIRO_PROMPT e em AGENDA_PROMPT</span>
+      <div class="code-right"><span class="lbadge">colar nos 2</span><button class="copy-btn" onclick="copyCode(event, this)">Copiar</button><span class="code-toggle-btn">Clique para ver</span></div>
+    </div>
+    <div class="code">### MEMÓRIA DE CONVERSAS ANTERIORES
+Você tem a tool `buscar_historico`, que consulta RESUMOS de conversas ANTERIORES
+deste usuário (sessões já encerradas). Ela NÃO consulta o banco de dados.
+
+CHAME quando a pergunta depender de algo dito em outra conversa e você precisar
+desse conteúdo para responder — "a viagem que eu te falei", "o plano que
+combinamos", "como eu tinha decidido".
+
+NÃO CHAME para dados que estão no banco (gastos, saldos, extratos, eventos):
+para isso existem as tools específicas deste agente. Também não chame para o
+que já está nas mensagens acima — isso é a conversa atual, não o passado.
+
+O resultado da tool é INSUMO, não resposta: use o conteúdo para preencher o
+JSON. NUNCA devolva o texto da tool cru, e NUNCA invente uma conversa passada.
+Se a tool não encontrar nada e isso impedir a resposta, use "esclarecer".</div>
+  </div>
+
+  <p class="lead" style="margin-top:6px;">E um exemplo para cada especialista, antes do respectivo <code class="inline">_SHOTS_CUT</code>:</p>
+
+  <div class="code-wrap">
+    <div class="code-header" onclick="toggleCode(this)">
+      <span class="fname">app/prompts.py — FINANCEIRO_SHOT_5 e AGENDA_SHOT_5</span>
+      <div class="code-right"><span class="lbadge">acrescentar</span><button class="copy-btn" onclick="copyCode(event, this)">Copiar</button><span class="code-toggle-btn">Clique para ver</span></div>
+    </div>
+    <div class="code"><span class="c">#Exemplo 5 — Pergunta que depende de conversa anterior → consultar memória:</span>
+FINANCEIRO_SHOT_5 = <span class="s">"""
+Roteador: ROUTE=financeiro
+PERGUNTA_ORIGINAL=[pergunta que se refere a algo combinado em outra conversa]
+Financeiro: buscar_historico(busca="[assunto da conversa passada]")
+Tool: [12/03/2026] O usuário definiu a meta de juntar R$ 3.000 para trocar de notebook.
+Financeiro: (consulta as tools de transactions) e responde
+{"dominio":"financeiro","intencao":"consultar","resposta":"Sua meta era juntar R$ 3.000 para o notebook; você já separou R$ 1.850.","recomendacao":"Faltam R$ 1.150 — separando R$ 290 por mês você chega em 4 meses."}"""</span>
+
+
+<span class="c">#Exemplo 5 — Pergunta que depende de conversa anterior → consultar memória:</span>
+AGENDA_SHOT_5 = <span class="s">"""
+Roteador: ROUTE=agenda
+PERGUNTA_ORIGINAL=[pedido para agendar algo mencionado em outra conversa]
+Agenda: buscar_historico(busca="[assunto da conversa passada]")
+Tool: [09/08/2026] O usuário agendou uma viagem para Salvador em dezembro.
+Agenda: (usa o achado para preencher o evento)
+{"dominio":"agenda","intencao":"criar","resposta":"Encontrei a viagem para Salvador em dezembro que você mencionou.","recomendacao":"Confirmo o bloqueio da agenda para dezembro?","esclarecer":"Quais dias exatos de dezembro?"}"""</span>
+
+
+<span class="c"># ── registre cada um na montagem do prompt correspondente ──</span>
+<span class="c"># FINANCEIRO_PROMPT_COMPLETO:  ... FINANCEIRO_SHOT_4 + "\n\n" +</span>
+<span class="h">#                              FINANCEIRO_SHOT_5      + "\n\n" +</span>
+<span class="c">#                              FINANCEIRO_SHOTS_CUT</span>
+<span class="c">#</span>
+<span class="c"># AGENDA_PROMPT_COMPLETO:      ... AGENDA_SHOT_4     + "\n\n" +</span>
+<span class="h">#                              AGENDA_SHOT_5          + "\n\n" +</span>
+<span class="c">#                              AGENDA_SHOTS_CUT</span></div>
+  </div>
+
+  <div class="test-box">
+    <div class="tt">🗣️ Teste do Passo 11 — o especialista usa o que a memória trouxe?</div>
+    <p style="margin-bottom:4px;">Continue no <code>/docs</code> com o <code>session_id</code> <code>aluno01</code>, que já tem a conversa sobre Salvador encerrada:</p>
+    <table class="qa">
+      <thead><tr><th>#</th><th>O que você pergunta</th><th>Resposta esperada</th></tr></thead>
+      <tbody>
+        <tr><td class="n">1</td><td><span class="voce">lembrando da viagem que eu te falei, bloqueia minha agenda pra isso</span></td><td><span class="ok">A resposta menciona Salvador</span> — o especialista de agenda foi buscar na memória e usou o achado. Deve pedir os dias exatos de dezembro.</td></tr>
+        <tr><td class="n">2</td><td><span class="voce">lembrando da viagem, quanto eu já gastei com transporte?</span></td><td>Vai para o <strong>financeiro</strong>, consulta o banco <span class="ok">e cita a viagem</span> na resposta.</td></tr>
+        <tr><td class="n">3</td><td><span class="voce">marca dentista na sexta às 10h</span></td><td>Cria o evento direto. <span class="nao">Não pode</span> consultar a memória — não há nada de passado aqui.</td></tr>
+        <tr><td class="n">4</td><td><span class="voce">quais são as regras de privacidade do Assessor?</span></td><td>Responde a partir do <strong>FAQ</strong> (o PDF). <span class="nao">Não pode</span> falar em conversas anteriores — o FAQ ficou de fora da tool de propósito.</td></tr>
+      </tbody>
+    </table>
+    <div class="callout co-err" style="margin-top:10px;">
+      <div class="ct">Se a resposta vier com o texto da tool cru</div>
+      <p>Algo como <code>[09/08/2026] O usuário agendou uma viagem…</code> aparecendo na tela significa que o especialista devolveu o retorno da tool em vez de preencher o JSON. Reforce a frase <em>"o resultado da tool é INSUMO, não resposta"</em> no prompt dele.</p>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ─── 16: COMO TESTAR TUDO ─── -->
+<div class="slide" data-title="O teste do ciclo completo">
+<div class="slide-inner slide-scroll">
+  <span class="gtag">a hora da verdade</span>
+  <h2 class="sec-title">O teste que prova a <span style="color:var(--cyan)">aula inteira</span></h2>
+  <p class="lead">Duas conversas, com o mesmo <code class="inline">session_id</code>. A primeira cria a memória; a segunda a resgata. Faça tudo pelo <code class="inline">/docs</code> — é lá que você controla o id à mão.</p>
+
+  <div class="test-box">
+    <div class="tt">▸ Conversa 1 — criar a memória</div>
+    <table class="qa">
+      <thead><tr><th>#</th><th>O que você faz</th><th>Resposta esperada</th></tr></thead>
+      <tbody>
+        <tr><td class="n">1</td><td><span class="acao"><code>POST /chat</code> · session_id <code>aluno01</code></span><br><span class="voce">gastei 120 reais numa cadeira de escritório</span></td><td>Confirma o registro do gasto.</td></tr>
+        <tr><td class="n">2</td><td><span class="acao">mesmo <code>POST /chat</code>, mesmo id</span><br><span class="voce">quero economizar em móveis esse semestre</span></td><td>Responde com alguma orientação.</td></tr>
+        <tr><td class="n">3</td><td><span class="acao"><code>POST /sessions/aluno01/encerrar</code></span></td><td><span class="ok">Um resumo</span> citando a cadeira, os R$ 120 e a intenção de economizar. <span class="nao">Se vier <code>resumo: null</code></span>, a conversa não tinha mensagens — confira o id.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="test-box">
+    <div class="tt">▸ Conversa 2 — resgatar a memória</div>
+    <table class="qa">
+      <thead><tr><th>#</th><th>O que você pergunta</th><th>Resposta esperada</th></tr></thead>
+      <tbody>
+        <tr><td class="n">4</td><td><span class="acao"><code>POST /chat</code> · session_id <code>aluno01</code></span><br><span class="voce">o que eu te falei sobre a cadeira?</span></td><td><span class="ok">Cita a cadeira de escritório e a data</span> da conversa 1. Esta é a linha que prova que a aula funcionou.</td></tr>
+        <tr><td class="n">5</td><td><span class="voce">e sobre a bicicleta, o que eu falei?</span></td><td><span class="ok">Admite que não encontrou</span> registro, sem inventar nada.</td></tr>
+        <tr><td class="n">6</td><td><span class="voce">lembrando dos móveis, quanto ainda posso gastar?</span></td><td>Vai para o <strong>financeiro</strong>, consulta o banco <span class="ok">e cita os móveis</span> — a memória virou insumo da resposta.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="test-box">
+    <div class="tt">▸ No navegador, do jeito que o usuário faria</div>
+    <table class="qa">
+      <thead><tr><th>#</th><th>O que você faz</th><th>Resposta esperada</th></tr></thead>
+      <tbody>
+        <tr><td class="n">1</td><td><span class="acao">abra <code>http://localhost:8000</code> e converse 2 ou 3 mensagens</span></td><td>O assessor responde e lembra do que foi dito nesta conversa.</td></tr>
+        <tr><td class="n">2</td><td><span class="acao">clique em <strong>nova sessão</strong></span></td><td>"Encerrando a sessão anterior…", depois <span class="ok">o resumo aparece na dica</span> embaixo do campo.</td></tr>
+        <tr><td class="n">3</td><td><span class="voce">o que a gente conversou antes?</span></td><td><span class="nao">Ele não vai achar</span> — e está certo: o id mudou. É a limitação do <code>user_id</code>, explicada no próximo slide.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="divider"></div>
+
+  <h3 class="slide-h3">🔎 Quando falhar, onde procurar</h3>
+  <p style="color:var(--muted);font-size:.86rem;line-height:1.65;margin-bottom:4px;">Cada sintoma aponta para uma camada diferente. Use esta tabela antes de sair mexendo no prompt.</p>
+  <div class="card" style="padding:0;overflow:hidden;">
+    <table class="tbl">
+      <thead><tr><th>O que você vê</th><th>Camada</th><th>Volte ao passo</th></tr></thead>
+      <tbody>
+        <tr><td>"Nova sessão iniciada." sem resumo nenhum</td><td>a sessão não foi encerrada</td><td><strong>3, 4 e 6</strong></td></tr>
+        <tr><td>O resumo sai, mas a conversa 2 não acha nada</td><td>o filtro da busca</td><td><strong>8</strong></td></tr>
+        <tr><td>"Não foi possível identificar o usuário"</td><td>o <code>config</code> não chegou na tool</td><td><strong>9</strong></td></tr>
+        <tr><td>Ele nunca chama a memória, mesmo quando devia</td><td>o prompt</td><td><strong>10 e 11</strong></td></tr>
+        <tr><td>Ele chama, recebe o resumo e diz que não achou</td><td>os exemplos do prompt</td><td><strong>10</strong> (shots concretos)</td></tr>
+        <tr><td>A resposta vem com <code>[09/08/2026] O usuário…</code> cru</td><td>o especialista devolveu a tool em vez do JSON</td><td><strong>11</strong></td></tr>
+        <tr><td>Ele consulta a memória para perguntar saldo</td><td>falta o "QUANDO NÃO CHAMAR"</td><td><strong>10 e 11</strong></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout co-err">
+    <div class="ct">Se o /chat travar e der erro depois de ~70 segundos</div>
+    <p>Quase certamente <strong style="color:var(--text)">não é o seu código</strong>: é a cota diária gratuita do Gemini (20 requisições por dia). O terminal mostra <code>429 RESOURCE_EXHAUSTED</code>. Note que o traceback exibe só o erro do Gemini mesmo quando o fallback para o Groq também falhou — o LangChain re-lança sempre o <strong style="color:var(--text)">primeiro</strong> erro, o que engana na hora de depurar. Saudações continuam funcionando, porque o roteador usa Groq.</p>
+  </div>
+</div>
+</div>
+
+<!-- ─── 18: CONFERÊNCIA ─── -->
+<div class="slide" data-title="Conferência final">
+<div class="slide-inner slide-scroll">
+  <span class="gtag">conferência</span>
+  <h2 class="sec-title">O que você deve ter <span style="color:var(--green)">agora</span></h2>
+  <p class="lead">Marque cada item. Se algum não bater, volte ao passo correspondente antes de seguir.</p>
+
+  <div class="final-check" id="final-checklist">
+    <div class="fc-item"><div class="fc-check">✓</div><div class="fc-text">A · graph.py sem o session_id = "id_usuario" do modo script</div></div>
+    <div class="fc-item"><div class="fc-check">✓</div><div class="fc-text">A · o botão "nova sessão" reatribui a variável sessionId</div></div>
+    <div class="fc-item"><div class="fc-check">✓</div><div class="fc-text">B · _doc_id_da_sessao() acha a sessão mesmo após --reload</div></div>
+    <div class="fc-item"><div class="fc-check">✓</div><div class="fc-text">B · POST /sessions/{id}/encerrar aparece no /docs</div></div>
+    <div class="fc-item"><div class="fc-check">✓</div><div class="fc-text">B · encerrar gera resumo; encerrar de novo devolve null sem erro</div></div>
+    <div class="fc-item"><div class="fc-check">✓</div><div class="fc-text">C · roteador, financeiro e agenda têm buscar_historico</div></div>
+    <div class="fc-item"><div class="fc-check">✓</div><div class="fc-text">C · faq NÃO tem buscar_historico</div></div>
+    <div class="fc-item"><div class="fc-check">✓</div><div class="fc-text">C · no_roteador recebe e repassa o config</div></div>
+    <div class="fc-item"><div class="fc-check">✓</div><div class="fc-text">C · os 3 prompts falam da tool, com exemplos concretos</div></div>
+    <div class="fc-item"><div class="fc-check">✓</div><div class="fc-text">o assessor cita a cadeira quando você pergunta sobre ela</div></div>
+  </div>
+
+  <div class="bridge">
+    <h3 class="slide-h3" style="margin-bottom:8px;font-size:1rem;">🎯 O que mudou de verdade</h3>
+    <p style="color:var(--muted);font-size:.86rem;line-height:1.65;">Antes desta etapa, o assessor esquecia tudo ao fim de cada conversa. Agora ele fecha a conversa, condensa em um resumo e consegue dizer <em>"em 09/08 você me contou que ia para Salvador em dezembro"</em>. A diferença entre um chatbot e um assessor é exatamente essa: um responde perguntas, o outro <strong style="color:var(--text)">acompanha</strong> uma pessoa ao longo do tempo.</p>
+  </div>
+</div>
+</div>
+
+<!-- ─── 19: LIMITES E PRÓXIMO ─── -->
+<div class="slide" data-title="Limites conhecidos e o próximo passo">
+<div class="slide-inner slide-scroll">
+  <span class="ptag">honestidade técnica</span>
+  <h2 class="sec-title">O que <span style="color:var(--orange)">ainda não</span> funciona</h2>
+  <p class="lead">Terminar uma etapa sabendo o que ficou de fora vale mais do que fingir que está tudo pronto. São três limites reais, e o terceiro define o próximo assunto.</p>
+
+  <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px;">
+    <table class="tbl">
+      <thead><tr><th>Limite</th><th>Consequência hoje</th><th>Como resolver</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Não existe <code>user_id</code></strong></td>
+          <td>o front sorteia um UUID novo a cada "nova sessão"; a tool cai no fallback do <code>thread_id</code>, que muda junto — então uma conversa nunca acha a anterior</td>
+          <td>front manda dois ids: <code>user_id</code> fixo no <code>localStorage</code> + <code>session_id</code> por conversa</td>
+        </tr>
+        <tr>
+          <td><strong>Fechar a aba não encerra</strong></td>
+          <td>só o botão "nova sessão" aciona a rota; quem fecha o navegador deixa a conversa aberta e ela nunca vira resumo</td>
+          <td><code>sendBeacon</code> no <code>beforeunload</code>, ou uma faxina periódica fechando sessões paradas</td>
+        </tr>
+        <tr>
+          <td><strong>A busca é <code>$regex</code> literal</strong></td>
+          <td>o LLM escolhe o termo, e sinônimo não casa</td>
+          <td>busca semântica — <strong style="color:var(--text)">é o próximo assunto</strong></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout co-err" style="margin-bottom:16px;">
+    <div class="ct">Veja o terceiro limite acontecendo</div>
+    <p>Com o mesmo resumo "…agendou uma <strong style="color:var(--text)">viagem</strong> para Salvador…" no banco, variando só o termo de busca:</p>
+    <div class="code" style="margin-top:8px;">busca=<span class="s">'viagem'</span>            → <span class="s">1 resultado</span>
+busca=<span class="s">'Salvador'</span>          → <span class="s">1 resultado</span>
+busca=<span class="s">'viajar'</span>            → <span class="del">0 resultados</span>
+busca=<span class="s">'destino'</span>           → <span class="del">0 resultados</span>
+busca=<span class="s">'destino da viagem'</span> → <span class="del">0 resultados</span></div>
+    <p style="margin-top:8px;">O resumo está lá o tempo todo. Se o modelo escrever <code>busca="viajar"</code> em vez de <code>"viagem"</code>, a memória some — e o agente responde, com toda honestidade, que não encontrou nada. A arquitetura está certa; a <strong style="color:var(--text)">recuperação</strong> é que é frágil. O regex também tropeça em acento: <code>"moveis"</code> não acha <code>"móveis"</code>.</p>
+  </div>
+
+  <div class="bridge">
+    <h3 class="slide-h3" style="margin-bottom:10px;">🔮 Próxima etapa — do FAISS ao Qdrant</h3>
+    <p style="color:var(--muted);font-size:.88rem;line-height:1.7;margin-bottom:14px;">A troca do banco vetorial resolve <strong style="color:var(--text)">dois</strong> problemas de uma vez. No FAQ, o <code class="inline">faq.py</code> hoje refaz o split, gera os embeddings de todos os chunks e reconstrói o índice <em>a cada pergunta</em> — separar indexação de consulta corta isso. E na memória, embeddings fazem "viajar" e "destino" encontrarem "viagem para Salvador", que é justamente o que o regex não faz.</p>
+    <div class="next-pills">
+      <div class="next-pill">indexar uma vez, consultar sempre</div>
+      <div class="next-pill">busca semântica na memória</div>
+      <div class="next-pill">QDRANT_URL já está no .env</div>
+      <div class="next-pill">um só banco para FAQ e memória</div>
+    </div>
+  </div>
+</div>
+</div>
+
+</div>
+
+<script>
+// ══════════════════════════ BG CANVAS ══════════════════════════
+const bgCanvas = document.getElementById('bg');
+const bgCtx = bgCanvas.getContext('2d');
+let BW, BH, nodes = [];
+function resizeBg() { BW = bgCanvas.width = window.innerWidth; BH = bgCanvas.height = window.innerHeight; }
+resizeBg(); window.addEventListener('resize', () => { resizeBg(); initNodes(); });
+function initNodes() {
+  nodes = [];
+  const n = Math.floor((BW * BH) / 18000);
+  for (let i = 0; i < n; i++) nodes.push({ x:Math.random()*BW, y:Math.random()*BH, vx:(Math.random()-.5)*.4, vy:(Math.random()-.5)*.4, r:Math.random()*2+1 });
+}
+initNodes();
+function drawBg() {
+  bgCtx.clearRect(0, 0, BW, BH);
+  nodes.forEach(n => { n.x += n.vx; n.y += n.vy; if(n.x<0||n.x>BW)n.vx*=-1; if(n.y<0||n.y>BH)n.vy*=-1; });
+  for (let i = 0; i < nodes.length; i++) for (let j = i+1; j < nodes.length; j++) {
+    const dx=nodes[i].x-nodes[j].x, dy=nodes[i].y-nodes[j].y, d=Math.sqrt(dx*dx+dy*dy);
+    if (d < 120) { bgCtx.beginPath(); bgCtx.moveTo(nodes[i].x,nodes[i].y); bgCtx.lineTo(nodes[j].x,nodes[j].y); bgCtx.strokeStyle=`rgba(124,58,237,${.15*(1-d/120)})`; bgCtx.lineWidth=.5; bgCtx.stroke(); }
+  }
+  nodes.forEach(n => { bgCtx.beginPath(); bgCtx.arc(n.x,n.y,n.r,0,Math.PI*2); bgCtx.fillStyle='rgba(0,229,255,.5)'; bgCtx.fill(); });
+  requestAnimationFrame(drawBg);
+}
+drawBg();
+
+// ══════════════════════════ SLIDE ENGINE ══════════════════════════
+const slideEls = Array.from(document.querySelectorAll('.slide'));
+const TOTAL = slideEls.length;
+let current = 0;
+let maxReached = 0;
+
+const progressBar = document.getElementById('progress-bar');
+const counter     = document.getElementById('slide-counter');
+const titleBar    = document.getElementById('slide-title-bar');
+const navPrev     = document.getElementById('nav-prev');
+const navNext     = document.getElementById('nav-next');
+const dotsEl      = document.getElementById('dots');
+
+slideEls.forEach((_, i) => {
+  const d = document.createElement('div'); d.className = 'dot'; d.onclick = () => goTo(i);
+  dotsEl.appendChild(d);
+});
+
+function goTo(n) {
+  if (n < 0 || n >= TOTAL) return;
+  slideEls.forEach((s, i) => {
+    s.classList.remove('active', 'prev');
+    if (i < n) s.classList.add('prev');
+  });
+  slideEls[n].classList.add('active');
+  current = n;
+  if (n > maxReached) maxReached = n;
+  updateUI();
+  onSlideEnter(current);
+}
+
+function updateUI() {
+  progressBar.style.width = ((current + 1) / TOTAL * 100) + '%';
+  counter.textContent = `${current + 1} / ${TOTAL}`;
+  titleBar.textContent = slideEls[current].dataset.title || '';
+  navPrev.classList.toggle('disabled', current === 0);
+  navNext.classList.toggle('disabled', current === TOTAL - 1);
+  document.querySelectorAll('.dot').forEach((d,i) => {
+    d.classList.toggle('active', i === current);
+    d.classList.toggle('done', i < current);
+  });
+}
+
+navPrev.onclick = () => goTo(current - 1);
+navNext.onclick = () => goTo(current + 1);
+document.addEventListener('keydown', e => {
+  if (e.target.closest('.code')) return;
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') goTo(current + 1);
+  if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   goTo(current - 1);
+});
+requestAnimationFrame(() => goTo(0));
+
+function onSlideEnter(n) {
+  const title = slideEls[n].dataset.title;
+  if (title === 'Conferência final') {
+    const el = document.getElementById('final-checklist');
+    el.classList.remove('play');
+    void el.offsetWidth; // reinicia a animação toda vez que a slide é revisitada
+    el.classList.add('play');
+  }
+}
+
+// ══════════════════════════ CÓDIGO ESCONDIDO ══════════════════════════
+function toggleCode(header) {
+  const wrap = header.parentElement;
+  const open = wrap.classList.toggle('open');
+  const btn = header.querySelector('.code-toggle-btn');
+  if (btn) btn.textContent = open ? 'Ocultar' : 'Clique para ver';
+}
+
+// ══════════════════════════ COPIAR CÓDIGO ══════════════════════════
+function copyCode(evento, botao) {
+  evento.stopPropagation();               // não fecha o bloco ao clicar em copiar
+  const wrap = botao.closest('.code-wrap');
+  const texto = wrap.querySelector('.code').textContent;
+
+  const feedback = (ok) => {
+    botao.textContent = ok ? '✓ Copiado' : 'Falhou';
+    botao.classList.toggle('done', ok);
+    setTimeout(() => { botao.textContent = 'Copiar'; botao.classList.remove('done'); }, 1800);
+  };
+
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(texto).then(() => feedback(true), () => feedback(false));
+  } else {
+    // fallback para quando o arquivo é aberto direto do disco (file://)
+    const ta = document.createElement('textarea');
+    ta.value = texto;
+    ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    feedback(ok);
+  }
+}
+</script>
+</body>
+</html>
