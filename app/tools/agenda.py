@@ -1,8 +1,14 @@
+import asyncio
+import os
+import shutil
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta
 from typing import Optional, List
 from langchain.tools import tool
 from pydantic import BaseModel, Field
 
 from app.db import get_pgsql_conn as get_conn
+from app.config import GOOGLE_OAUTH_CREDENTIALS
 
 
 class AddEventArgs(BaseModel):
@@ -174,5 +180,113 @@ def query_events(
             pass
 
 
+###################
+# GOOGLE CALENDAR #
+###################
+# Efeito FORA do Postgres: o evento é criado no Google pelo servidor MCP
+# @cocal/google-calendar-mcp (tool "create-event"), iniciado por stdio com o
+# cliente oficial do pacote `mcp`, que já está no requirements.txt.
+
+GOOGLE_MCP_PACOTE = "@cocal/google-calendar-mcp"
+GOOGLE_TIMEOUT_S = 20
+GOOGLE_FUSO = "America/Sao_Paulo"
+
+
+class AddGoogleEventArgs(BaseModel):
+    title: str = Field(..., description="Título do evento.")
+    source_text: str = Field(..., description="Texto original do usuário.")
+    start_time: str = Field(..., description="Início em ISO 8601 (ex.: '2025-06-10T14:00:00-03:00'). Obrigatório.")
+    end_time: Optional[str] = Field(default=None, description="Fim em ISO 8601. Se ausente, o evento dura 1 hora.")
+    location: Optional[str] = Field(default=None, description="Local do evento.")
+    notes: Optional[str] = Field(default=None, description="Observações (vai para a descrição do evento).")
+
+
+def _fim_padrao(start_time: str) -> str:
+    return (datetime.fromisoformat(start_time) + timedelta(hours=1)).isoformat()
+
+
+async def _criar_evento_google(args: dict) -> dict:
+    from mcp import ClientSession, StdioServerParameters
+    from mcp.client.stdio import stdio_client
+
+    npx = shutil.which("npx")
+    if not npx:
+        return {"status": "error", "message": "npx não encontrado: instale o Node.js para usar o Google Agenda."}
+    if not GOOGLE_OAUTH_CREDENTIALS:
+        return {"status": "error", "message": "GOOGLE_OAUTH_CREDENTIALS não configurada no .env."}
+
+    servidor = StdioServerParameters(
+        command=npx,
+        args=["-y", GOOGLE_MCP_PACOTE],
+        env={**os.environ, "GOOGLE_OAUTH_CREDENTIALS": GOOGLE_OAUTH_CREDENTIALS},
+    )
+    async with stdio_client(servidor) as (leitura, escrita):
+        async with ClientSession(leitura, escrita) as sessao:
+            await sessao.initialize()
+            ferramentas = await sessao.list_tools()
+            criar = next((f for f in ferramentas.tools if f.name == "create-event"), None)
+            if criar is None:
+                return {"status": "error", "message": "O servidor MCP não expõe a tool create-event."}
+
+            esquema = criar.inputSchema or {}
+            propriedades = set(esquema.get("properties", {}))
+            candidatos = {
+                "calendarId": "primary",
+                "summary": args["title"],
+                "start": args["start_time"],
+                "end": args["end_time"],
+                "timeZone": GOOGLE_FUSO,
+                "location": args.get("location"),
+                "description": args.get("notes"),
+            }
+            # Só envia o que o esquema real do servidor declara.
+            enviar = {k: v for k, v in candidatos.items() if k in propriedades and v is not None}
+            faltando = [r for r in esquema.get("required", []) if r not in enviar]
+            if faltando:
+                return {"status": "error", "message": f"Campos obrigatórios do create-event sem valor: {faltando}"}
+
+            resposta = await sessao.call_tool("create-event", enviar)
+            texto = " ".join(c.text for c in resposta.content if getattr(c, "text", None))
+            if resposta.isError:
+                return {"status": "error", "message": texto or "create-event devolveu erro."}
+            return {"status": "ok", "title": args["title"], "start_time": args["start_time"],
+                    "end_time": args["end_time"], "google": texto}
+
+
+def _rodar(args: dict) -> dict:
+    async def _com_prazo():
+        return await asyncio.wait_for(_criar_evento_google(args), GOOGLE_TIMEOUT_S)
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(_com_prazo())
+    # Já existe um loop nesta thread: roda o novo loop em outra thread.
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(lambda: asyncio.run(_com_prazo())).result()
+
+
+@tool("add_google_event", args_schema=AddGoogleEventArgs)
+def add_google_event(
+    title: str,
+    source_text: str,
+    start_time: str,
+    end_time: Optional[str] = None,
+    location: Optional[str] = None,
+    notes: Optional[str] = None,
+) -> dict:
+    """Cria um evento no Google Agenda do usuário (calendário principal)."""
+    try:
+        fim = end_time or _fim_padrao(start_time)
+        return _rodar({
+            "title": title, "start_time": start_time, "end_time": fim,
+            "location": location, "notes": notes,
+        })
+    except asyncio.TimeoutError:
+        return {"status": "error", "message": f"Google Agenda não respondeu em {GOOGLE_TIMEOUT_S}s."}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
 # Exporta a lista de tools
-TOOLS_AGENDA = [add_event, query_events]
+TOOLS_AGENDA = [add_event, query_events, add_google_event]

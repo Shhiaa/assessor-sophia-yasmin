@@ -22,6 +22,9 @@ MONGODB_URI     = os.getenv("MONGO_URI")
 FRONTEND_DIR    = BASE_DIR / "frontend"
 URL_DB          = os.getenv("DATABASE_URL")
 TYPESAFE_API_KEY = os.getenv("TYPESAFE_API_KEY")
+# Caminho do gcp-oauth.keys.json usado pelo servidor MCP do Google Calendar.
+# Fora de OBRIGATORIAS: sem ele só add_google_event deixa de funcionar.
+GOOGLE_OAUTH_CREDENTIALS = os.getenv("GOOGLE_OAUTH_CREDENTIALS")
 
 OBRIGATORIAS = {
     "GEMINI_API_KEY": GEMINI_API_KEY,
