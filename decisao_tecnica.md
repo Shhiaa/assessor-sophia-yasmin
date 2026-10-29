@@ -69,11 +69,19 @@ O LangGraph guarda as mensagens do turno. Se, depois de uma recusa, o histórico
 
 ## 3. O que muda nas métricas do SRE
 
-O monitor (`app/observabilidade`) mede o turno do começo ao fim, conta erro só quando há exceção e soma tokens e custo só das chamadas aos modelos de chat. A chamada ao juiz usa `urllib` e não entra nessa conta. Abaixo está o raciocínio sobre o mecanismo. Não medimos latência com carga real.
+O monitor (`app/observabilidade`) mede o turno do começo ao fim, conta erro só quando há exceção e soma tokens e custo só das chamadas aos modelos de chat. A chamada ao juiz usa `urllib` e não entra nessa conta. O **custo da transação em si foi medido** (`testes/mede_latencia.py`, 100 escritas de cada tipo, sem modelo de linguagem, Postgres local):
+
+| | Média | p95 |
+| --- | --- | --- |
+| Antes: `commit` dentro da tool | 8 a 11 ms | 12 a 15 ms |
+| Depois: turno aprovado (`COMMIT`) | 35 a 41 ms | 49 a 55 ms |
+| Depois: turno recusado (`ROLLBACK`) | 33 a 38 ms | 51 ms |
+
+O acréscimo é de **cerca de 27 a 30 ms por turno que escreve**, e quase tudo é abrir a conexão do turno (abrir e fechar uma conexão leva cerca de 27 ms neste Postgres). Dentro do limite de 8 s do turno, isso é desprezível. **Dois limites da medição:** o Postgres local não tem latência de rede, e num banco remoto cada ida e volta soma; e a latência de um turno completo, com modelos e juiz, **não foi medida** (os modelos estavam no limite de uso). O resto da tabela abaixo é raciocínio sobre o mecanismo.
 
 | Métrica | Solução escolhida (transacionar) | Interceptar (descartada) | Compensar (descartada) |
 | --- | --- | --- | --- |
-| **Latência e p95** (limite: 8 s) | Nenhuma chamada a mais ao modelo. Soma uma conexão e um `COMMIT` ou `ROLLBACK`, que levam milissegundos. O risco é o juiz demorar, e o limite de 5 s protege | Uma chamada de julgamento antes de cada escrita, bem no caminho principal | Nada no caminho feliz. Na recusa, uma ida a mais ao banco |
+| **Latência e p95** (limite: 8 s) | Nenhuma chamada a mais ao modelo. Soma uma conexão e um `COMMIT` ou `ROLLBACK`: cerca de 30 ms medidos. O risco é o juiz demorar, e o limite de 5 s protege | Uma chamada de julgamento antes de cada escrita, bem no caminho principal | Nada no caminho feliz. Na recusa, uma ida a mais ao banco |
 | **Taxa de erro** (limite: 5%) | Recusa termina numa frase segura, sem exceção: **não conta como erro**. Falha de conexão ou de `COMMIT` é exceção e conta | A falha do pré-julgamento viraria exceção | A falha ao apagar é um segundo problema e aumenta a taxa |
 | **Status** (`ok`, `erro`, `bloqueado`) | Recusa do juiz fica `ok`. `bloqueado` continua só para o guardrail de entrada. Se o juiz cair, vira `ok` com escritas recusadas | Igual, com mais um motivo de erro | Recusa compensada fica `ok`, mas a linha existiu por um tempo |
 | **Tokens e custo** | Nada muda | Uma chamada de modelo a mais por escrita | Nada muda |
@@ -187,6 +195,7 @@ Num turno simulado (fala do usuário, tool, resposta "Registrei sua despesa de 3
 | `app/unidade_trabalho.py` | O rascunho do turno: conexão, `confirmar`, `desfazer`, `liberar`, `@serializado`, `depois_do_commit`, `encerrar_turno_db` |
 | `app/cambio.py` | Converte dólar e euro para reais |
 | `testes/prova_depois.py` | Prova nas tools, incluindo tools em paralelo e o Google falso |
+| `testes/mede_latencia.py` | Mede o custo da transação por turno (antes e depois), sem modelo de linguagem |
 | `testes/serie_testes.py` | Série de pedidos pelo chat completo (`--sem-juiz` força a recusa) |
 | `testes/reproduz_desencontro.py` | Reproduz o problema original ("o chat disse não, o banco disse sim"). Ainda não foi executado |
 | `testes/schema_local.sql` | Esquema mínimo para o Postgres local |

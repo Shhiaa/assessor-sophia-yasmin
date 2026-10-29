@@ -18,6 +18,7 @@ Depois: tool grava na conexão do turno (sem commit) → orquestrador → guardr
 | `testes/prova_depois.py` | Prova, com marcador único `ZZ-<hora>-<n>` e uma conexão separada, que o turno recusado não deixa linha e o aprovado grava uma vez, nas três tools. Não usa LLM nem JEV. |
 | `app/cambio.py` | Conversão de USD/EUR para reais: AwesomeAPI (sem chave, `urllib`, timeout 3 s) e, se falhar, a cotação de reserva do `.env` (`USD_BRL`, `EUR_BRL`). Sem dependência nova. |
 | `testes/schema_local.sql` | Esquema mínimo (inferido das queries das tools) para testar num Postgres local no Docker. O banco Aiven do `.env` não existe mais no DNS. |
+| `testes/mede_latencia.py` | Mede o custo da transação por turno sem LLM: cerca de +27 a 30 ms por turno que escreve, quase tudo abrir a conexão (Postgres local, sem rede). |
 | `testes/serie_testes.py` | Série de pedidos pelo grafo completo (dólar, euro, reais, correção de valor, evento, consultas): mostra a pergunta, a resposta e as linhas do banco. `--sem-juiz` força a recusa. |
 | `testes/reproduz_desencontro.py` | Já existia da etapa anterior: reproduz o "antes". |
 | `decisao_tecnica.md`, `MUDANCAS.md` | Documentação. |
