@@ -25,7 +25,7 @@ def conexao_do_turno():
         return None
     if turno["conn"] is None:
         turno["conn"] = psycopg2.connect(
-            URL_DB, options="-c idle_in_transaction_session_timeout=30000"
+            URL_DB, options="-c idle_in_transaction_session_timeout=60000"
         )
     with turno["conn"].cursor() as cur:
         cur.execute("SAVEPOINT tool")

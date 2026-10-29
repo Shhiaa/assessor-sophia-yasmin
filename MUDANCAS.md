@@ -14,8 +14,11 @@ Depois: tool grava na conexão do turno (sem commit) → orquestrador → guardr
 
 | Arquivo | O que é |
 | --- | --- |
-| `app/unidade_trabalho.py` | Conexão do turno (guardada num `ContextVar`), `confirmar`, `desfazer`, `liberar` e `encerrar_turno_db`. Cada chamada de tool abre um `SAVEPOINT`, então um erro numa tool desfaz só aquela chamada. A conexão tem `idle_in_transaction_session_timeout` de 30 s. |
+| `app/unidade_trabalho.py` | Conexão do turno (guardada num `ContextVar`), `confirmar`, `desfazer`, `liberar` e `encerrar_turno_db`. Cada chamada de tool abre um `SAVEPOINT`, então um erro numa tool desfaz só aquela chamada. A conexão tem `idle_in_transaction_session_timeout` de 60 s (com 30 s o Postgres derrubou um turno em que o LLM demorou entre duas tool calls). |
 | `testes/prova_depois.py` | Prova, com marcador único `ZZ-<hora>-<n>` e uma conexão separada, que o turno recusado não deixa linha e o aprovado grava uma vez, nas três tools. Não usa LLM nem JEV. |
+| `testes/schema_local.sql` | Esquema mínimo (inferido das queries das tools) para testar num Postgres local no Docker. O banco Aiven do `.env` não existe mais no DNS. |
+| `testes/prova_chat.py` | Prova pelo grafo completo (`executar_fluxo_assessor`): mostra mensagem enviada, resposta e linhas do banco; a sequence do `id` prova que o INSERT foi tentado mesmo quando o rollback o desfez. `--sem-juiz` força a recusa. |
+| `testes/prova_dolar.py` | O caso do HTML (compra em dólares) pelo grafo completo, com o juiz real. |
 | `testes/reproduz_desencontro.py` | Já existia da etapa anterior: reproduz o "antes". |
 | `decisao_tecnica.md`, `MUDANCAS.md` | Documentação. |
 
@@ -43,7 +46,19 @@ Mudanças da etapa anterior (já no repositório): `app/tools/agenda.py` (tool `
 
 ## Verificação
 
-- Sintaxe de todos os arquivos alterados: ok.
-- Juiz testado offline (`sem_chave` recusa e remove `2` e `3` do histórico; veredito `apoiada` autoriza e não remove nada): ok.
-- `testes/prova_depois.py` **não foi executado**: o ambiente em que as mudanças foram feitas não resolve o host do Postgres (`aivencloud.com`). Rodar na máquina com acesso: `python testes/prova_depois.py`.
-- Não foi rodado o fluxo completo pelo `/chat`.
+Ambiente de teste: Postgres 17 num contêiner Docker local (`pg-teste17`, porta 55433) com `testes/schema_local.sql`, apontado só por `DATABASE_URL` na linha de comando (o `.env` não foi alterado). Nos testes pelo chat o especialista usou o Groq direto (cota diária do Gemini esgotada) e a tool de memória devolveu "sem histórico" (o Qdrant recusa a conexão aqui). Isso não interfere nas escritas.
+
+| Teste | Resultado |
+| --- | --- |
+| `testes/prova_depois.py` (3 tools, recusa e aprovação, duas escritas no mesmo turno) | 7 de 7 ok |
+| Chat, criar transação, juiz real recusou (`sem_apoio`) | resposta "Não tenho evidência…", 0 linhas, sequence subiu (INSERT feito e desfeito) |
+| Chat, criar evento, juiz real aprovou (`apoiada` 0,86) | 1 evento gravado, uma vez |
+| Chat, criar transação em reais, juiz real aprovou (`apoiada` 0,80 a 0,94) | 1 linha gravada, uma vez |
+| Chat, `--sem-juiz` (falha fechada) | recusa, 0 linhas |
+| Chat, caso dos dólares ("Comprei uma coca por 2 dólares") | juiz recusou (`sem_apoio` 0,15), 0 linhas (antes da correção a linha ficava) |
+| Exceção no meio do turno (erro 400 da Groq depois da tool) | 0 linhas, sequence subiu: o rollback também vale para exceção |
+
+Observações:
+- O veredito do JEV varia entre execuções (o mesmo pedido em reais foi aprovado e depois recusado). A invariante vale nos dois casos.
+- O `gpt-oss` da Groq às vezes devolve erro 400 de tool call inválida; o teste repete em outra sessão.
+- Não foram testados pelo chat: alterar valor (`update_transaction`) e consulta de saldo (limite de tokens por minuto da Groq). `update_transaction` está coberto por `prova_depois.py`.
