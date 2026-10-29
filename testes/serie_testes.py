@@ -2,7 +2,9 @@
 Série de testes pelo chat completo (grafo, LLM e juiz reais): para cada pedido
 mostra a pergunta, a resposta e as linhas que ficaram no banco (marcador em letras).
 
-    python testes/serie_testes.py
+    python testes/serie_testes.py [--sem-juiz]
+
+--sem-juiz zera a chave do JEV: o juiz falha fechado e todo turno é recusado.
 """
 import sys
 import time
@@ -12,11 +14,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import psycopg2  # noqa: E402
 
+import app.juiz as juiz  # noqa: E402
 import app.llms as llms  # noqa: E402
 import app.tools.memory as memoria  # noqa: E402
 
 # Sem cota no Gemini e sem Qdrant neste ambiente (ver MUDANCAS.md).
 llms.llm_especialista = llms.llm_groq
+if "--sem-juiz" in sys.argv:
+    juiz.TYPESAFE_API_KEY = ""
 memoria.recuperar_historico = lambda *a, **k: []
 
 from app.config import URL_DB  # noqa: E402

@@ -119,7 +119,7 @@ Criados:
 - `app/unidade_trabalho.py`: conexão do turno, `confirmar`, `desfazer`, `liberar`, `@serializado`, `depois_do_commit`, `encerrar_turno_db`.
 - `app/cambio.py`: conversão de USD e EUR para reais.
 - `testes/prova_depois.py`: prova nas três tools, incluindo tools em paralelo.
-- `testes/prova_chat.py`, `testes/prova_dolar.py`, `testes/serie_testes.py`: provas pelo grafo completo.
+- `testes/serie_testes.py`: série de pedidos pelo grafo completo (dólar, euro, reais, correção, evento, consultas), com `--sem-juiz` para forçar a recusa.
 - `testes/reproduz_desencontro.py`: reproduz o "antes" (ainda não executado).
 - `testes/schema_local.sql`: esquema mínimo para o Postgres local.
 - `decisao_tecnica.md`, `MUDANCAS.md`.
