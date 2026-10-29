@@ -63,7 +63,7 @@ Um contador dos rótulos `[juiz]` no `/monitor` tornaria visível a recusa por i
 | --- | --- | --- | --- |
 | `update_transaction` fora do agente financeiro | Incluída na lista `TOOLS` de `app/tools/financeiro.py`, que o agente já importa (`app/agents.py` não mudou) | O enunciado trata a alteração como escrita obrigatória; sem a tool ligada o cenário de alteração não roda no chat | Provar só pelo MCP: ele não passa pelo grafo nem pelo juiz |
 | Juiz sem resposta (timeout, exceção, chave ausente) | Falha fechada: frase fixa e `ROLLBACK` | Mantém a invariante: sem conferência, nada permanece | Falha aberta (confirmar sem veredito): aprova escrita que ninguém conferiu. Repetir a chamada: soma latência com a transação aberta |
-| `add_google_event` | **Fora da invariante, como decisão consciente.** O evento no Google é criado na hora da tool, antes do veredito | Um efeito fora do Postgres não participa da transação, e o `ROLLBACK` não o alcança. Risco aceito: se o juiz recusar, o evento continua no Google e não é apagado | Compensar com `delete-event` do servidor MCP do Google: é possível (a tool existe) mas exige guardar o id do evento, apagar na recusa e registrar a falha do delete. Fica como melhoria. Criar o evento só depois da aprovação: tira o id da resposta da tool |
+| `add_google_event` | **Dentro da invariante: o evento só é criado no Google depois do `COMMIT` aprovado.** No chat a tool não chama o Google; guarda o pedido na lista `depois` do turno (`depois_do_commit`) e responde `status: pendente`. `encerrar_turno_db` roda os pedidos depois do `COMMIT`; com recusa ou exceção a lista é descartada. Fora de turno (MCP, scripts) cria na hora | Um efeito fora do Postgres não participa da transação, então ele é adiado até o veredito, e nunca desfeito. O Google nunca vê uma escrita recusada | Compensar com `delete-event`: exige o id do evento, num formato que não pôde ser verificado sem as credenciais. Deixar fora da invariante: era a decisão anterior, deixava o evento no Google após a recusa. **Limites:** a resposta ao usuário diz "pendente"; se o Google falhar depois do `COMMIT`, a falha só vai para o log e o evento do Postgres, se houver, permanece. A chamada real ao Google nunca foi testada (sem Node nem credenciais aqui): a prova usa um Google falso. O PDF do FAQ ainda diz que não há calendário externo |
 | `salvar_mensagem` (Mongo) | Mantido depois do juiz | Grava a frase que o usuário efetivamente viu; o Mongo não compartilha transação com o Postgres | Gravar antes do juiz: registraria uma frase que o usuário nunca viu |
 | Leituras (`search_transactions`, `saldo_total`, `saldo_diario`, `query_events`) | Usam a conexão do turno quando existe | Só a mesma conexão enxerga a escrita ainda não confirmada | Conexão global nas leituras: "registre e diga o saldo" não acharia a linha |
 | Tools em paralelo no mesmo turno | `@serializado`: uma por vez na conexão do turno | O ToolNode do LangGraph roda tool calls em paralelo. Sem a trava, SAVEPOINTs e rollbacks parciais se misturam. Medido: sem a trava, 8 de 12 turnos com 4 `add_transaction` simultâneas perderam linha; com a trava, 0 de 12 | Uma conexão por tool: quebraria a transação única do turno |
@@ -82,11 +82,12 @@ Ambiente: Postgres 17 num contêiner local (o banco do `.env` não existe mais n
 | --- | --- | --- |
 | `add_transaction` | 0 linhas (`ZZ-<rodada>-1`) | 1 linha (`ZZ-<rodada>-2`) |
 | `add_event` | 0 eventos (`ZZ-<rodada>-3`) | 1 evento (`ZZ-<rodada>-4`) |
+| `add_google_event` (Google falso) | 0 chamadas ao Google (`ZZ-<rodada>-g1`) | 1 chamada, depois do `COMMIT` (`ZZ-<rodada>-g2`) |
 | `update_transaction` | valor antigo mantido (`ZZ-<rodada>-6`) | valor novo gravado uma vez |
 | 2 escritas no mesmo turno | 0 linhas (`ZZ-<rodada>-7`) | — |
 | 4 `add_transaction` em paralelo | — | 12 turnos, 4 linhas em todos |
 
-Resultado: 8 de 8 verificações ok.
+Resultado: 12 de 12 verificações ok.
 
 **Pelo chat, com o juiz real** (marcadores em letras, porque o anonimizador troca dígitos por `[PII_CONTA_…]`):
 
@@ -105,6 +106,7 @@ Em execuções anteriores, com marcadores como `ZZ-aidcaj-a` e `ZZ-aidcaj-b`, a 
 
 **Limites da evidência (a repetir quando a cota da Groq voltar):**
 
+- A criação real do evento no Google nunca foi executada (sem Node nem credenciais).
 - A correção de valor pelo chat (caso `ZZ-ajfjdb-d`) foi recusada pelo juiz; a aprovação de `update_transaction` está provada só na camada das tools.
 - As consultas de saldo e de agenda pelo chat ficaram sem resposta por erro 400 e limite de tokens da Groq.
 - Nos casos recusados pelo chat (euro, evento, correção) não conferi o motivo do veredito nem se a tool chegou a rodar; o banco ficou sem linha em todos.
@@ -114,7 +116,7 @@ Em execuções anteriores, com marcadores como `ZZ-aidcaj-a` e `ZZ-aidcaj-b`, a 
 
 Criados:
 
-- `app/unidade_trabalho.py`: conexão do turno, `confirmar`, `desfazer`, `liberar`, `@serializado`, `encerrar_turno_db`.
+- `app/unidade_trabalho.py`: conexão do turno, `confirmar`, `desfazer`, `liberar`, `@serializado`, `depois_do_commit`, `encerrar_turno_db`.
 - `app/cambio.py`: conversão de USD e EUR para reais.
 - `testes/prova_depois.py`: prova nas três tools, incluindo tools em paralelo.
 - `testes/prova_chat.py`, `testes/prova_dolar.py`, `testes/serie_testes.py`: provas pelo grafo completo.
@@ -126,11 +128,11 @@ Modificados:
 
 - `app/db.py`: `get_pgsql_conn()` devolve a conexão do turno.
 - `app/tools/financeiro.py`: `confirmar`, `desfazer` e `@serializado` nas tools; `update_transaction` na lista `TOOLS`; `add_transaction` com `currency`.
-- `app/tools/agenda.py`: `confirmar`, `desfazer`, `liberar` e `@serializado`; tool `add_google_event`.
+- `app/tools/agenda.py`: `confirmar`, `desfazer`, `liberar` e `@serializado`; tool `add_google_event`, agora adiada para depois do `COMMIT`.
 - `app/juiz.py`: `escrita_autorizada`, `rastro_do_turno`, timeout de 5 s.
 - `app/graph.py`: campo `escrita_autorizada`, abertura e encerramento da transação do turno, limpeza do histórico na exceção.
 - `app/config.py`: `COTACAO_RESERVA` e `GOOGLE_OAUTH_CREDENTIALS`.
-- `app/prompts.py`: regra de moeda no financeiro e regra de `add_event` e `add_google_event` na agenda.
+- `app/prompts.py`: regra de moeda no financeiro; regra de `add_event` e `add_google_event` na agenda (a tool devolve "pendente").
 - `.gitignore`: logs, `historico.json` e saídas de teste locais (`r*.txt`, `resp*.txt`), que deixaram de ser versionados.
 
 ## 6. Registro de alterações
@@ -141,3 +143,4 @@ Modificados:
 4. **Testes com Postgres local e timeout de 60 s.** O Postgres derrubou uma conexão do turno por ficar parada mais de 30 s entre duas tool calls.
 5. **Conversão de moeda** (`app/cambio.py`, `add_transaction`). `currency` com BRL, USD e EUR; cotação da API, com reserva no `.env`.
 6. **Correções da análise do revisor.** Trava por turno e `RELEASE SAVEPOINT` (`@serializado`); limpeza de todas as mensagens de IA e de tool do turno na recusa e na exceção; este arquivo alinhado ao código (mecanismo `ContextVar`, timeouts de 5 s e 60 s, `update_transaction` ligada em `financeiro.TOOLS`); logs, `historico.json` e `r*.txt` tirados do repositório (continuam no disco). A chave do JEV (TypeSafe) continua no histórico do commit `042bead`: é preciso revogá-la no painel do provedor, apagar o arquivo não resolve.
+7. **Google Agenda dentro da invariante.** `add_google_event` deixou de criar o evento na hora: o pedido fica na lista do turno e só roda depois do `COMMIT` aprovado (`depois_do_commit` em `app/unidade_trabalho.py`). Provado com um Google falso: recusa, 0 chamadas; aprovação, 1 chamada.

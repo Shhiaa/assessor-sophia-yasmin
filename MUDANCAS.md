@@ -31,7 +31,7 @@ Depois: tool grava na conexão do turno (sem commit) → orquestrador → guardr
 | `app/tools/financeiro.py` | `conn.commit()` virou `confirmar(conn)` e `conn.rollback()` virou `desfazer(conn)`. `update_transaction` entrou na lista `TOOLS` (antes só o MCP a usava). `add_transaction` ganhou `currency` (BRL, USD ou EUR): converte para reais antes de gravar e devolve `amount_brl`, `moeda_original`, `cotacao_brl` e `fonte_cotacao`. O valor e a moeda originais ficam no `source_text`; a tabela não mudou. |
 | `app/tools/agenda.py` | Mesma troca em `add_event`. `conn.close()` virou `liberar(conn)` em `add_event` e `query_events`, e `query_events` ganhou `desfazer(conn)` no erro. |
 | `app/config.py` | `COTACAO_RESERVA` (lê `USD_BRL` e `EUR_BRL` do `.env`, padrão 5,50 e 6,00). |
-| `app/prompts.py` | Regra no prompt do financeiro: valor em dólar ou euro vai com `currency` e a resposta informa valor original, cotação e valor em reais. |
+| `app/prompts.py` | Regra de `add_google_event` (devolve "pendente") e, no financeiro: valor em dólar ou euro vai com `currency` e a resposta informa valor original, cotação e valor em reais. |
 | `app/juiz.py` | `_publicar` devolve `escrita_autorizada` (verdadeiro só no veredito `apoiada` com noul ≥ 0,70). Na recusa, remove do histórico as tool calls do turno (`RemoveMessage`). Timeout do JEV de 30 s para 5 s (`JEV_TIMEOUT_S`). |
 | `app/graph.py` | Campo `escrita_autorizada` no `Estado` (iniciado em `False` a cada turno). `executar_fluxo_assessor` abre o turno no banco antes do `invoke` e chama `encerrar_turno_db(autorizado)` no `finally`. Se o `COMMIT` falhar, o turno conta como `erro` no monitor. |
 
@@ -43,7 +43,7 @@ Mudanças da etapa anterior (já no repositório): `app/tools/agenda.py` (tool `
 - **Aprovado:** `COMMIT` único no fechamento. Dentro do turno a tool e as leituras enxergam a própria escrita.
 - **Queda do processo antes do `COMMIT`:** o Postgres descarta a transação.
 - **Repetição do pedido:** sem deduplicação. Recusa seguida de repetição aprovada grava uma linha.
-- **`add_google_event`:** continua **fora** da invariante (o evento no Google é criado na hora da tool e o `ROLLBACK` não o alcança). Foi mantido assim para não aumentar a mudança; está registrado em `decisao_tecnica.md`.
+- **`add_google_event`:** dentro da regra. No chat a tool só guarda o pedido (`status: pendente`) e o Google é chamado depois do `COMMIT` aprovado; recusa ou exceção descartam o pedido. Fora de turno cria na hora. A chamada real ao Google nunca foi testada (sem Node nem credenciais); a prova usa um Google falso.
 - **`salvar_mensagem` (Mongo):** inalterado, continua depois do juiz.
 - **Tools em paralelo no mesmo turno:** `@serializado` faz uma tool por vez na conexão do turno (sem a trava, 8 de 12 turnos com 4 `add_transaction` simultâneas perdiam linha; com ela, 0).
 
@@ -74,7 +74,7 @@ Observações:
 | 1. Tools em paralelo perdem escrita | `@serializado` (em `app/unidade_trabalho.py`) nas 7 tools do Postgres: trava por turno (`RLock` no dicionário do turno) e `RELEASE SAVEPOINT` ao fim de cada chamada. `testes/prova_depois.py` ganhou o teste de 4 tools em paralelo em 12 turnos: 0 perdas com a trava, 8 perdas sem ela. |
 | 2. Histórico sujo depois da recusa | `rastro_do_turno` (`app/juiz.py`) remove todas as mensagens de IA e de tool do turno na recusa. Verificado com um turno simulado: sobram a fala do usuário e a frase segura. |
 | 3. Exceção não limpa o histórico | `executar_fluxo_assessor` remove o mesmo rastro do checkpoint (`update_state`) antes de relançar a exceção. Verificado: depois de exceções seguidas o histórico tem só as falas do usuário. |
-| 4. Google fora da invariante | Mantido, escrito como decisão consciente com o risco (o evento permanece no Google se o juiz recusar). Corrigida a justificativa: apagar com `delete-event` é possível e fica como melhoria. |
+| 4. Google fora da invariante | Resolvido: `add_google_event` guarda o pedido no turno e só cria o evento no Google depois do `COMMIT` aprovado (`depois_do_commit`). Provado com Google falso: recusa, 0 chamadas; aprovação, 1. |
 | 5. Evidência incompleta | `decisao_tecnica.md` agora tem a evidência por tool com marcador único, a tabela do chat e os limites (correção de valor, consultas e motivo das recusas ainda a repetir quando a cota da Groq voltar). `prova_depois.py` foi executado (8 de 8). |
 | 6. `decisao_tecnica.md` inconsistente | Reescrito alinhado ao código: `ContextVar` no lugar de `turno_id`, timeouts de 5 s (juiz) e 60 s (transação), `update_transaction` ligada em `financeiro.TOOLS`, log de implementação. |
 | 7. Sujeira e segurança | `_uvicorn*.log`, `historico.json`, `r*.txt` e `resp*.txt` saíram do repositório (`git rm --cached`; os arquivos continuam no disco) e entraram no `.gitignore`. **A chave TypeSafe segue no histórico do commit `042bead`: é preciso revogá-la no provedor.** |

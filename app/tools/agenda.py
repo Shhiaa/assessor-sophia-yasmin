@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from app.db import get_pgsql_conn as get_conn
 from app.config import GOOGLE_OAUTH_CREDENTIALS
-from app.unidade_trabalho import serializado, confirmar, desfazer, liberar
+from app.unidade_trabalho import serializado, confirmar, desfazer, liberar, depois_do_commit
 
 
 class AddEventArgs(BaseModel):
@@ -279,13 +279,19 @@ def add_google_event(
     location: Optional[str] = None,
     notes: Optional[str] = None,
 ) -> dict:
-    """Cria um evento no Google Agenda do usuário (calendário principal)."""
+    """Cria um evento no Google Agenda do usuário (calendário principal).
+
+    No chat o evento só é criado depois que o juiz aprova o turno (resposta "pendente")."""
     try:
         fim = end_time or _fim_padrao(start_time)
-        return _rodar({
+        args = {
             "title": title, "start_time": start_time, "end_time": fim,
             "location": location, "notes": notes,
-        })
+        }
+        if depois_do_commit(lambda: _rodar(args)):
+            return {"status": "pendente", "title": title, "start_time": start_time, "end_time": fim,
+                    "message": "Será criado no Google Agenda depois da confirmação do turno."}
+        return _rodar(args)
     except asyncio.TimeoutError:
         return {"status": "error", "message": f"Google Agenda não respondeu em {GOOGLE_TIMEOUT_S}s."}
     except Exception as e:

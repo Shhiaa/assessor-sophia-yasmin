@@ -17,7 +17,7 @@ _turno: ContextVar = ContextVar("turno_db", default=None)
 
 
 def abrir_turno_db() -> None:
-    _turno.set({"conn": None, "lock": threading.RLock()})
+    _turno.set({"conn": None, "lock": threading.RLock(), "depois": []})
 
 
 def conexao_do_turno():
@@ -84,13 +84,33 @@ def liberar(conn) -> None:
         conn.close()
 
 
+def depois_do_commit(acao) -> bool:
+    """Guarda um efeito fora do Postgres (ex.: Google Agenda) para rodar só se o turno
+    for aprovado, depois do COMMIT. Devolve False fora de turno: quem chama age na hora."""
+    turno = _turno.get()
+    if turno is None:
+        return False
+    turno["depois"].append(acao)
+    return True
+
+
 def encerrar_turno_db(autorizado: bool) -> None:
     turno = _turno.get()
     _turno.set(None)
-    conn = turno["conn"] if turno else None
-    if conn is None:
+    if turno is None:
         return
-    try:
-        conn.commit() if autorizado else conn.rollback()
-    finally:
-        conn.close()
+    conn = turno["conn"]
+    if conn is not None:
+        try:
+            conn.commit() if autorizado else conn.rollback()
+        finally:
+            conn.close()
+    if not autorizado:
+        return
+    for acao in turno["depois"]:
+        try:
+            resultado = acao()
+        except Exception as exc:
+            resultado = {"status": "error", "message": str(exc)}
+        if isinstance(resultado, dict) and resultado.get("status") == "error":
+            print(f"[unidade_trabalho] efeito depois do commit falhou: {resultado.get('message')}")

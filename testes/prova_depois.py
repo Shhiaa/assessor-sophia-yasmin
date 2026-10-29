@@ -115,5 +115,29 @@ for rodada in range(12):
     perdas += contar("SELECT count(*) FROM transactions WHERE source_text LIKE %s", f"{m}-%") != 4
 conferir("4 tools em paralelo: turnos com linha faltando (de 12)", perdas, 0)
 
+# Google Agenda: efeito fora do Postgres só acontece depois do COMMIT aprovado
+import app.tools.agenda as agenda  # noqa: E402
+
+chamadas_google = []
+agenda._rodar = lambda args: chamadas_google.append(args["title"]) or {"status": "ok"}  # Google falso
+
+
+def novo_google(titulo: str):
+    return agenda.add_google_event.invoke({
+        "title": titulo, "source_text": titulo, "start_time": "2030-01-01T10:00:00-03:00",
+    })
+
+
+m = f"ZZ-{RODADA}-g1"
+resposta = turno(lambda: novo_google(m), autorizado=False)
+conferir("add_google_event recusado: chamadas ao Google", chamadas_google.count(m), 0)
+conferir("add_google_event no turno devolve pendente", resposta["status"], "pendente")
+m = f"ZZ-{RODADA}-g2"
+turno(lambda: novo_google(m), autorizado=True)
+conferir("add_google_event aprovado: chamadas ao Google", chamadas_google.count(m), 1)
+m = f"ZZ-{RODADA}-g3"
+novo_google(m)
+conferir("add_google_event fora de turno: cria na hora", chamadas_google.count(m), 1)
+
 print("\nRESULTADO:", "tudo certo" if not falhas else f"falhou: {falhas}")
 sys.exit(1 if falhas else 0)
