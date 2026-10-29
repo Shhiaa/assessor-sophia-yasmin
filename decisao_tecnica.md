@@ -1,146 +1,216 @@
 # Decisão técnica — Etapa 8: o juiz e a escrita
 
-Status: decisão tomada e implementada. Lista de todas as mudanças em `MUDANCAS.md`. Nenhuma chave, token, `.env` ou URL com senha aparece neste arquivo.
+Este arquivo conta, em linguagem simples, o que decidimos, por que, o que ficou de fora e como provamos que funciona. A lista completa de mudanças está no `MUDANCAS.md`. Não há chaves, tokens, `.env` nem senhas aqui.
 
-## 1. A decisão tomada, e por quê
+## 1. O que decidimos, e por quê
 
-**O problema.** `add_transaction`, `update_transaction` (`app/tools/financeiro.py`) e `add_event` (`app/tools/agenda.py`) davam `commit()` dentro da própria tool. O juiz (`app/juiz.py`) só roda no fim do grafo, depois do orquestrador e do guardrail de saída. Quando o juiz recusava a frase, a linha já estava permanente em `transactions` ou `events`: o chat dizia "Não tenho evidência para afirmar isso." e o banco guardava o registro.
+### O problema
 
-**A decisão: transacionar.** Uma transação por turno. As três tools escrevem numa conexão aberta para o turno e não confirmam. Quem confirma é o fechamento do turno, em `executar_fluxo_assessor` (`app/graph.py`), e só quando o juiz aprovou (`escrita_autorizada`). Recusa, erro, exceção, juiz sem resposta ou sem chave fazem `ROLLBACK`.
+Quando o usuário pede "registre uma compra", a tool grava no banco e confirma na hora (`commit()`). Só depois o juiz confere a frase que vai aparecer no chat. Se o juiz não gostar e trocar a frase por "Não tenho evidência para afirmar isso.", a linha **já está salva**. O chat diz "não" e o banco diz "sim".
 
-Como funciona (`app/unidade_trabalho.py`):
+Isso acontecia nas três tools que escrevem: `add_transaction`, `update_transaction` (em `app/tools/financeiro.py`) e `add_event` (em `app/tools/agenda.py`).
 
-- `abrir_turno_db()` cria, num `ContextVar`, um dicionário do turno com a conexão (aberta na primeira tool que precisar) e uma trava (`RLock`). As threads das tools copiam o contexto e enxergam o mesmo dicionário.
-- `get_pgsql_conn()` (`app/db.py`) devolve a conexão do turno quando há turno aberto. Fora de turno (servidor MCP, scripts) devolve a conexão global, e `confirmar`, `desfazer` e `liberar` se comportam como `commit`, `rollback` e `close` de antes.
-- `@serializado` envolve as sete tools do Postgres: uma tool por vez na conexão do turno. Cada chamada abre um `SAVEPOINT`; um erro na tool desfaz só aquela chamada (`ROLLBACK TO SAVEPOINT`) e o fim da chamada libera o savepoint.
-- `encerrar_turno_db(autorizado)` dá `COMMIT` ou `ROLLBACK` e fecha a conexão num `finally`. A conexão do turno tem `idle_in_transaction_session_timeout` de 60 s.
+### A decisão: uma transação por turno
 
-Fluxo de antes: modelo escolhe a tool → **tool grava e dá `commit()`** → orquestrador redige → guardrail revisa → juiz pode trocar a frase → chat mostra o texto (a linha continua no banco).
+Pense num rascunho a lápis. Cada pergunta do usuário (um "turno") ganha o seu próprio rascunho no banco:
 
-Fluxo de depois: modelo escolhe a tool → tool grava na conexão do turno, sem `commit()` → orquestrador redige → guardrail revisa → **juiz decide e marca `escrita_autorizada`** → fechamento do turno confirma se verdadeiro, desfaz em qualquer outro caso.
+1. As tools escrevem no rascunho, mas **não confirmam**.
+2. O juiz dá o veredito.
+3. Se o juiz aprovou, o fim do turno **passa a caneta** (`COMMIT`). Em qualquer outro caso, **apaga o rascunho** (`ROLLBACK`).
 
-**Por que cabe neste grafo.**
+"Qualquer outro caso" inclui: juiz recusou, juiz deu erro, juiz demorou demais, faltou a chave do juiz ou deu exceção no meio do turno. Na dúvida, nada fica salvo.
 
-- Cobre as três tools de uma vez, porque todas pedem a conexão ao mesmo ponto.
-- Não cria rota, endpoint nem agente. Muda a tool, o acesso ao banco, o juiz e o fechamento do turno.
-- A tool enxerga a própria escrita (mesma conexão): "registre e me diga o saldo" funciona e o `id` real volta para o juiz como evidência.
-- Se o processo cair no meio do turno, o Postgres descarta a transação não confirmada.
+**Como era:** o modelo escolhe a tool → a tool grava e confirma → o orquestrador escreve a frase → o juiz pode trocar a frase → o chat mostra o texto (a linha continua no banco).
 
-**Garantia nas três tools.** Turno recusado: nenhuma linha criada nem alterada em `transactions` ou `events`. Turno aprovado: a escrita é confirmada uma vez, no fechamento do turno.
+**Como ficou:** o modelo escolhe a tool → a tool grava no rascunho → o orquestrador escreve a frase → **o juiz decide** → o fim do turno confirma ou apaga.
 
-**Histórico depois da recusa ou da exceção.** O `MemorySaver` guarda as mensagens do turno. Se elas ficassem, o modelo do turno seguinte leria "Registrei sua despesa de 30 reais" e a tool com `status: ok` de uma linha que não existe. Por isso:
+### Como isso funciona no código
 
-- Na recusa, o juiz devolve `RemoveMessage` para todas as mensagens de IA e de tool do turno (`rastro_do_turno`); sobra a fala do usuário e a frase segura.
-- Numa exceção em qualquer nó, `executar_fluxo_assessor` remove o mesmo rastro do checkpoint (`update_state`) antes de relançar a exceção.
+Tudo mora em `app/unidade_trabalho.py`:
 
-## 2. As decisões que o grupo não tomou, e por quê
+- No começo do turno, o `graph.py` abre o rascunho (`abrir_turno_db`). A conexão com o banco só é criada quando uma tool precisa dela.
+- A função `get_pgsql_conn()` (em `app/db.py`) entrega a conexão do turno quando existe um turno aberto. Fora do chat (servidor MCP, scripts) tudo continua como antes: conexão normal e confirmação imediata.
+- As tools usam `confirmar`, `desfazer` e `liberar` no lugar de `commit`, `rollback` e `close`. Dentro de um turno essas funções não confirmam nada; fora dele, fazem o que sempre fizeram.
+- Cada chamada de tool usa um `SAVEPOINT` (um "marcador" dentro do rascunho). Se uma tool falha, só ela é desfeita, e as outras do mesmo turno continuam.
+- O decorador `@serializado` faz **uma tool de cada vez** no rascunho. O LangGraph pode rodar várias tools ao mesmo tempo, e sem essa trava elas se atropelavam.
+- No fim, `encerrar_turno_db(autorizado)` confirma ou apaga e fecha a conexão.
 
-| Caminho | Como funcionaria aqui | Vantagem real | Custo real | Por que ficou de fora |
+### Por que essa solução cabe neste projeto
+
+- Cobre as três tools de uma vez, porque todas pegam a conexão no mesmo lugar. Corrigir só uma deixaria o mesmo furo nas outras.
+- Não criou rota, endpoint nem agente novo.
+- A tool enxerga o que ela mesma acabou de gravar. Por isso "registre e me diga o saldo" funciona, e o número de identificação (`id`) da linha volta de verdade para o juiz usar como evidência.
+- Se o programa cair no meio do turno, o Postgres joga fora o rascunho sozinho.
+
+### A garantia
+
+- **Turno recusado:** nenhuma linha criada ou alterada em `transactions` ou `events`.
+- **Turno aprovado:** a escrita é confirmada uma única vez, no fim do turno.
+
+### O histórico da conversa também é limpo
+
+O LangGraph guarda as mensagens do turno. Se, depois de uma recusa, o histórico ainda dissesse "Registrei sua despesa de 30 reais", o modelo do turno seguinte acreditaria numa linha que não existe. Por isso:
+
+- **Na recusa**, o juiz remove do histórico todas as mensagens de IA e de tool daquele turno (`rastro_do_turno`). Sobra a fala do usuário e a frase segura.
+- **Numa exceção**, o `graph.py` faz a mesma limpeza antes de repassar o erro.
+
+## 2. O que não escolhemos, e por quê
+
+| Caminho | Como seria aqui | O lado bom | O lado ruim | Por que ficou de fora |
 | --- | --- | --- | --- | --- |
-| Interceptar | Um julgamento antes da tool, comparando os argumentos com a fala do usuário | Nada chega a gravar | O juiz compara a frase pronta com a evidência da tool; antes da tool não existem frase nem evidência. Exigiria uma segunda rubrica e uma chamada a mais por escrita | Não cobre o caso visto em aula: "Lancei R$ 30,00" nasce depois da tool, com os argumentos corretos |
-| Adiar | A tool devolve "pendente" e um nó grava depois do veredito | Nenhuma conexão aberta durante o turno | A tool não devolve `id` real e não enxerga a escrita no mesmo turno; `update` logo depois de `add` quebra; o INSERT vira código duplicado; o MCP precisaria de outro caminho | O Postgres já entrega esse adiamento com a transação, sem duplicar código |
-| Compensar | A tool confirma; na recusa, uma ação inversa (`DELETE` ou `UPDATE` ao valor antigo) | Nenhuma mudança no caminho feliz | A linha fica visível por uma janela (painel, MCP, outra sessão); queda nessa janela deixa a linha para sempre; falha da compensação é um segundo efeito | A invariante diz "nenhuma escrita permanece"; compensar é limpeza posterior, não atomicidade |
+| **Interceptar** (julgar antes da tool) | Um julgamento antes de a tool escrever | Nada chega a gravar | O juiz compara a frase pronta com o que a tool devolveu. Antes da tool não existe nem uma coisa nem outra. Ainda custaria uma chamada a mais por escrita | Não pega o caso da aula: o "R$ 30,00" errado nasce depois da tool, com os argumentos certos |
+| **Adiar** (gravar só depois do veredito) | A tool só anota a intenção e outro passo grava depois | Nenhuma conexão fica aberta durante o turno | A tool não devolve o `id` real, não enxerga a própria escrita e quebra "corrija o gasto que acabei de registrar". O INSERT teria que ser duplicado | O Postgres já faz esse adiamento com a transação, sem duplicar código |
+| **Compensar** (gravar e desfazer na recusa) | A tool confirma e, se o juiz recusar, outra ação apaga a linha | Quase não muda o caminho feliz | A linha fica visível por um tempo (painel, MCP, outra sessão). Se o programa cair nesse intervalo, o lixo fica para sempre. Apagar também pode falhar | A regra diz "nenhuma escrita permanece". Compensar é limpar depois, não impedir |
 
-Custo da decisão tomada: a conexão do turno fica aberta durante orquestrador, guardrail e juiz, e uma linha alterada fica travada para outras sessões nesse intervalo. Mitigações: timeout do juiz em 5 s (`JEV_TIMEOUT_S`) e `idle_in_transaction_session_timeout` de 60 s na conexão do turno (com 30 s o Postgres derrubou um turno em que o LLM demorou entre duas tool calls; o turno falhou fechado, sem linha).
+**Custo da solução que escolhemos:** a conexão fica aberta enquanto o orquestrador, o guardrail e o juiz trabalham, e uma linha alterada fica travada para outras sessões nesse tempo. Para limitar isso:
 
-## 3. O efeito nas métricas do SRE, e como
+- o juiz tem no máximo **5 segundos** para responder (`JEV_TIMEOUT_S` em `app/juiz.py`; antes eram 30);
+- o Postgres derruba a conexão do turno se ela ficar parada por mais de **60 segundos** (com 30 s ele derrubou um turno em que o modelo de linguagem demorou entre duas tools; nesse caso nada foi salvo).
 
-O monitor (`app/observabilidade`) mede o turno de `abrir_turno()` a `fechar_turno()`, conta erro só quando há exceção e soma tokens e custo só das chamadas de chat model. A chamada ao JEV usa `urllib` e não entra em tokens nem em custo. Os números abaixo são o raciocínio sobre o mecanismo; latência real não foi medida com carga.
+## 3. O que muda nas métricas do SRE
 
-| Métrica | Decisão: transacionar | Interceptar (descartada) | Compensar (descartada) |
+O monitor (`app/observabilidade`) mede o turno do começo ao fim, conta erro só quando há exceção e soma tokens e custo só das chamadas aos modelos de chat. A chamada ao juiz usa `urllib` e não entra nessa conta. Abaixo está o raciocínio sobre o mecanismo. Não medimos latência com carga real.
+
+| Métrica | Solução escolhida (transacionar) | Interceptar (descartada) | Compensar (descartada) |
 | --- | --- | --- | --- |
-| Latência e p95 (SLO 8 s) | Nenhuma chamada a mais ao modelo. Soma uma conexão por turno com escrita e um `COMMIT` ou `ROLLBACK`. O risco é o JEV: o timeout de 5 s limita o tempo com a transação aberta | Uma chamada de julgamento antes de cada escrita, no caminho crítico | Nada no caminho feliz; na recusa, uma ida a mais ao banco |
-| Taxa de erro (SLO 5%) | Recusa termina em frase segura sem exceção: não conta como erro. Falha de `COMMIT` ou de conexão levanta exceção e conta (`status = erro`) | Falha do pré-julgamento vira exceção | Falha da compensação é um segundo efeito e sobe a taxa |
-| Status ok, erro, bloqueado | Recusa do juiz fica `ok`; `bloqueado` continua só para o guardrail de entrada. Queda do JEV com falha fechada vira `ok` com escritas recusadas | Igual, com um motivo a mais de erro | Recusa compensada fica `ok`, mas a linha existiu por uma janela |
-| Tokens e custo | Sem mudança nos chat models | Uma chamada de modelo a mais por escrita, se for LLM | Sem mudança |
-| Conexões | Uma conexão presa durante o turno com escrita | Nenhuma | Nenhuma extra |
+| **Latência e p95** (limite: 8 s) | Nenhuma chamada a mais ao modelo. Soma uma conexão e um `COMMIT` ou `ROLLBACK`, que levam milissegundos. O risco é o juiz demorar, e o limite de 5 s protege | Uma chamada de julgamento antes de cada escrita, bem no caminho principal | Nada no caminho feliz. Na recusa, uma ida a mais ao banco |
+| **Taxa de erro** (limite: 5%) | Recusa termina numa frase segura, sem exceção: **não conta como erro**. Falha de conexão ou de `COMMIT` é exceção e conta | A falha do pré-julgamento viraria exceção | A falha ao apagar é um segundo problema e aumenta a taxa |
+| **Status** (`ok`, `erro`, `bloqueado`) | Recusa do juiz fica `ok`. `bloqueado` continua só para o guardrail de entrada. Se o juiz cair, vira `ok` com escritas recusadas | Igual, com mais um motivo de erro | Recusa compensada fica `ok`, mas a linha existiu por um tempo |
+| **Tokens e custo** | Nada muda | Uma chamada de modelo a mais por escrita | Nada muda |
+| **Conexões** | Uma conexão presa durante o turno que escreve | Nenhuma | Nenhuma extra |
 
-Um contador dos rótulos `[juiz]` no `/monitor` tornaria visível a recusa por indisponibilidade. Fica fora desta entrega.
+Um contador dos rótulos `[juiz]` no `/monitor` mostraria as recusas por falha do juiz. Ficou fora desta entrega.
 
 ## 4. As outras decisões
 
-| Ponto | Decisão | Por quê | Alternativa descartada e por quê |
-| --- | --- | --- | --- |
-| `update_transaction` fora do agente financeiro | Incluída na lista `TOOLS` de `app/tools/financeiro.py`, que o agente já importa (`app/agents.py` não mudou) | O enunciado trata a alteração como escrita obrigatória; sem a tool ligada o cenário de alteração não roda no chat | Provar só pelo MCP: ele não passa pelo grafo nem pelo juiz |
-| Juiz sem resposta (timeout, exceção, chave ausente) | Falha fechada: frase fixa e `ROLLBACK` | Mantém a invariante: sem conferência, nada permanece | Falha aberta (confirmar sem veredito): aprova escrita que ninguém conferiu. Repetir a chamada: soma latência com a transação aberta |
-| `add_google_event` | **Dentro da invariante: o evento só é criado no Google depois do `COMMIT` aprovado.** No chat a tool não chama o Google; guarda o pedido na lista `depois` do turno (`depois_do_commit`) e responde `status: pendente`. `encerrar_turno_db` roda os pedidos depois do `COMMIT`; com recusa ou exceção a lista é descartada. Fora de turno (MCP, scripts) cria na hora | Um efeito fora do Postgres não participa da transação, então ele é adiado até o veredito, e nunca desfeito. O Google nunca vê uma escrita recusada | Compensar com `delete-event`: exige o id do evento, num formato que não pôde ser verificado sem as credenciais. Deixar fora da invariante: era a decisão anterior, deixava o evento no Google após a recusa. **Limites:** a resposta ao usuário diz "pendente"; se o Google falhar depois do `COMMIT`, a falha só vai para o log e o evento do Postgres, se houver, permanece. A chamada real ao Google nunca foi testada (sem Node nem credenciais aqui): a prova usa um Google falso. O PDF do FAQ ainda diz que não há calendário externo |
-| `salvar_mensagem` (Mongo) | Mantido depois do juiz | Grava a frase que o usuário efetivamente viu; o Mongo não compartilha transação com o Postgres | Gravar antes do juiz: registraria uma frase que o usuário nunca viu |
-| Leituras (`search_transactions`, `saldo_total`, `saldo_diario`, `query_events`) | Usam a conexão do turno quando existe | Só a mesma conexão enxerga a escrita ainda não confirmada | Conexão global nas leituras: "registre e diga o saldo" não acharia a linha |
-| Tools em paralelo no mesmo turno | `@serializado`: uma por vez na conexão do turno | O ToolNode do LangGraph roda tool calls em paralelo. Sem a trava, SAVEPOINTs e rollbacks parciais se misturam. Medido: sem a trava, 8 de 12 turnos com 4 `add_transaction` simultâneas perderam linha; com a trava, 0 de 12 | Uma conexão por tool: quebraria a transação única do turno |
-| Moeda estrangeira | `add_transaction` aceita `currency` (BRL, USD ou EUR) e converte para reais (`app/cambio.py`: AwesomeAPI, com cotação de reserva `USD_BRL` e `EUR_BRL` no `.env`). A tool devolve valor original, cotação e fonte | O caso dos dólares: gravar `amount=2` e responder "R$ 2" fazia o juiz recusar por moeda trocada. Agora o valor convertido e a cotação são evidência | Biblioteca de câmbio: todas embrulham uma API ou dado velho e `python-bcb` traz o pandas |
-| Timeout do JEV | 5 s | O SLO de p95 é 8 s e a transação fica aberta enquanto o JEV responde | Manter 30 s: estoura o SLO e prende a conexão |
-| Repetição do mesmo pedido | Sem deduplicação. No máximo uma confirmação por turno; recusa seguida de repetição aprovada grava uma linha | Dois lançamentos iguais podem ser legítimos | Restrição única em `source_text`: muda o esquema e bloquearia compras repetidas legítimas |
-| Queda do processo entre dois passos | Nenhuma ação extra | Antes do `COMMIT`, o Postgres descarta a transação. Janela aceita: queda depois do `COMMIT` e antes de entregar a resposta | — |
+### O que acontece se o juiz não responde
 
-### Evidência, com marcador único
+Ele **falha fechado**: o usuário vê a frase segura e o banco volta ao que era. Vale para timeout, erro e falta de chave. Confirmar sem veredito aprovaria algo que ninguém conferiu. Repetir a chamada somaria tempo com a transação aberta.
 
-Ambiente: Postgres 17 num contêiner local (o banco do `.env` não existe mais no DNS), esquema inferido em `testes/schema_local.sql`. Nos testes pelo chat o especialista usou a Groq (cota do Gemini esgotada) e a memória de longo prazo estava desligada (o Qdrant recusa conexão). Isso não interfere nas escritas.
+### `update_transaction` agora funciona no chat
 
-**Camada das tools** (`testes/prova_depois.py`, sem LLM e sem JEV; lê o banco por outra conexão):
+Ela existia, mas não estava na lista de tools do agente financeiro (só o servidor MCP a usava). Coloquei na lista `TOOLS` de `app/tools/financeiro.py`. O `app/agents.py` não precisou mudar. Sem isso, o cenário de "alterar um lançamento" nem rodaria no chat.
 
-| Tool | Recusado | Aprovado |
+### Leituras
+
+`search_transactions`, `saldo_total`, `saldo_diario` e `query_events` também usam a conexão do turno. Só ela enxerga o que acabou de ser gravado e ainda não confirmado.
+
+### Tools ao mesmo tempo
+
+O LangGraph pode rodar várias tools em paralelo. Sem a trava, quatro `add_transaction` simultâneas perderam linhas em **8 de 12 turnos**. Com a trava (`@serializado`), **0 de 12**.
+
+### Google Agenda (`add_google_event`)
+
+Um evento no Google não faz parte do Postgres, então o `ROLLBACK` não o apagaria. A solução foi **não criar o evento antes do veredito**:
+
+- No chat, a tool só anota o pedido e responde "pendente" (`depois_do_commit` em `app/unidade_trabalho.py`).
+- Depois do `COMMIT` aprovado, o fim do turno cria o evento no Google.
+- Se o juiz recusar ou houver exceção, o pedido é descartado e o Google nunca é chamado.
+- Fora do chat (MCP, scripts), a tool continua criando na hora.
+
+**Limites, sem esconder:** a resposta ao usuário diz que o evento "será criado". Se o Google falhar depois do `COMMIT`, a falha só aparece no log. A chamada **real** ao Google nunca foi testada (aqui não há Node.js nem credenciais): os testes usam um Google falso. O PDF do FAQ ainda diz que não há calendário externo, e isso contradiz a tool.
+
+**Alternativa que não usamos:** apagar o evento com o `delete-event` do servidor MCP. Daria para fazer, mas exigiria o id do evento, num formato que não conseguimos conferir sem as credenciais.
+
+### Salvar a mensagem no Mongo (`salvar_mensagem`)
+
+Fica como está, **depois** do juiz. Ela guarda a frase que o usuário de fato viu. O Mongo não participa da transação do Postgres.
+
+### Compras em dólar ou euro
+
+Este era o caso visto em aula: a tool gravava `amount=2` sem moeda, o chat respondia "R$ 2" e o juiz recusava por moeda trocada. Agora `add_transaction` aceita `currency` (BRL, USD ou EUR), converte para reais (`app/cambio.py`) e devolve valor original, cotação e fonte. Esses dados servem de evidência para o juiz.
+
+- A cotação vem da AwesomeAPI (sem chave, sem biblioteca nova). Se ela falhar, usa a cotação de reserva `USD_BRL` ou `EUR_BRL` do `.env`.
+- Descartamos bibliotecas de câmbio: todas embrulham uma API ou um dado velho, e `python-bcb` traz o `pandas`.
+- A tabela não mudou: o valor em reais fica em `amount` e o texto original (com os dólares) fica em `source_text`.
+
+### Repetir o mesmo pedido
+
+Não há bloqueio de duplicados. A garantia é no máximo **uma confirmação por turno**. Se um pedido for recusado e o usuário repetir e for aprovado, grava uma linha. Duas compras iguais podem ser legítimas (duas cocas no mesmo dia), e uma regra de unicidade mudaria o banco.
+
+### Se o programa cair no meio
+
+Antes do `COMMIT`, o Postgres joga o rascunho fora. A única janela que sobra é cair **depois** do `COMMIT` e antes de entregar a resposta: a linha existe, mas o usuário não viu o texto.
+
+## 5. Como provamos que funciona
+
+**Onde testamos:** o banco do `.env` não existe mais (o endereço sumiu do DNS). Usamos um Postgres 17 local no Docker, com um esquema que deduzimos do código (`testes/schema_local.sql`). Se o esquema real for diferente, vale rodar de novo no banco certo. Nos testes pelo chat, o modelo do especialista foi a Groq (a cota do Gemini acabou) e a memória de longo prazo ficou desligada (o Qdrant recusa conexão aqui). Isso não afeta as escritas.
+
+### Teste direto nas tools (`testes/prova_depois.py`)
+
+Sem modelo de linguagem e sem juiz. A leitura é feita por outra conexão, então só aparece o que foi confirmado. Cada tentativa tem um marcador único (`ZZ-<hora>-<número>`).
+
+| Tool | Turno recusado | Turno aprovado |
 | --- | --- | --- |
-| `add_transaction` | 0 linhas (`ZZ-<rodada>-1`) | 1 linha (`ZZ-<rodada>-2`) |
-| `add_event` | 0 eventos (`ZZ-<rodada>-3`) | 1 evento (`ZZ-<rodada>-4`) |
-| `add_google_event` (Google falso) | 0 chamadas ao Google (`ZZ-<rodada>-g1`) | 1 chamada, depois do `COMMIT` (`ZZ-<rodada>-g2`) |
-| `update_transaction` | valor antigo mantido (`ZZ-<rodada>-6`) | valor novo gravado uma vez |
-| 2 escritas no mesmo turno | 0 linhas (`ZZ-<rodada>-7`) | — |
-| 4 `add_transaction` em paralelo | — | 12 turnos, 4 linhas em todos |
+| `add_transaction` | 0 linhas | 1 linha |
+| `add_event` | 0 eventos | 1 evento |
+| `update_transaction` | valor antigo mantido | valor novo, uma vez |
+| `add_google_event` (Google falso) | 0 chamadas ao Google | 1 chamada, depois do `COMMIT` |
+| Duas escritas no mesmo turno | 0 linhas | — |
+| Quatro tools ao mesmo tempo | — | 12 turnos, 4 linhas em todos |
 
-Resultado: 12 de 12 verificações ok.
+**Resultado: 12 de 12 verificações passaram.**
 
-**Pelo chat, com o juiz real** (marcadores em letras, porque o anonimizador troca dígitos por `[PII_CONTA_…]`):
+### Pelo chat, com o juiz real (`testes/serie_testes.py`)
+
+O marcador usa letras, porque o anonimizador do guardrail troca números por `[PII_CONTA_...]`.
 
 | Pergunta | Resposta | Banco |
 | --- | --- | --- |
-| "Comprei um lanche por 15,50 dólares hoje, descrição ZZ-ajfjdb-a…" | "Lancei R$ 82,83 em ALIMENTAÇÃO … (USD 15,50)." | 1 linha de R$ 82,83 |
-| "Gastei 30 reais com um lanche hoje, descrição ZZ-ajfjdb-c…" | "Lancei R$30,00 em ALIMENTAÇÃO registrado com sucesso." | 1 linha de R$ 30,00 |
-| "Gastei 20 reais no mercado hoje, descrição ZZ-ajfjdb-d…" | "Registro de R$ 20,00 … adicionado com sucesso." | 1 linha |
-| "Registre na agenda o compromisso ZZ-ajfjdb-e em 02/01/2030 às 15:00…" | "Não tenho evidência para afirmar isso." (recusa) | 0 eventos |
-| "Paguei 20 euros num jantar hoje, descrição ZZ-ajfjdb-b…" | "Não tenho evidência para afirmar isso." (recusa) | 0 linhas |
-| "Corrija o gasto ZZ-ajfjdb-d para 25 reais." | "Não tenho evidência para afirmar isso." (recusa) | valor continua R$ 20,00 |
+| "Comprei um lanche por 15,50 dólares hoje…" | "Lancei R$ 82,83 em ALIMENTAÇÃO … (USD 15,50)." | 1 linha de R$ 82,83 |
+| "Gastei 30 reais com um lanche hoje…" | "Lancei R$30,00 em ALIMENTAÇÃO registrado com sucesso." | 1 linha de R$ 30,00 |
+| "Gastei 20 reais no mercado hoje…" | "Registro de R$ 20,00 … adicionado com sucesso." | 1 linha |
+| "Registre na agenda o compromisso … em 02/01/2030 às 15:00…" | "Não tenho evidência para afirmar isso." (recusa) | 0 eventos |
+| "Paguei 20 euros num jantar hoje…" | "Não tenho evidência para afirmar isso." (recusa) | 0 linhas |
+| "Corrija o gasto … para 25 reais." | "Não tenho evidência para afirmar isso." (recusa) | continua R$ 20,00 |
 
-Em execuções anteriores, com marcadores como `ZZ-aidcaj-a` e `ZZ-aidcaj-b`, a compra "2 dólares" virou R$ 10,69 (cotação 5,3462) e foi gravada uma vez; com o juiz `sem_apoio` (0,15) a linha desfeita deixou 0 linhas e a sequência do `id` subiu, o que prova que o INSERT aconteceu e foi desfeito. O mesmo vale para um erro 400 da Groq no meio do turno: 0 linhas.
+Em outras execuções: "2 dólares" virou R$ 10,69 (cotação 5,3462) e foi gravado uma vez. Quando o juiz recusou um pedido, o banco ficou com 0 linhas e o contador de `id` mesmo assim subiu, o que mostra que a tool **chegou a gravar** e o `ROLLBACK` desfez. Um erro da Groq no meio do turno também deixou 0 linhas.
 
-**Histórico**: com um turno simulado (fala do usuário, tool call, `ToolMessage`, frase "Registrei sua despesa de 30 reais.") e o juiz recusando, o histórico ficou só com a fala do usuário e "Não tenho evidência para afirmar isso." Numa exceção no meio do turno, o histórico ficou só com as falas do usuário.
+### Histórico
 
-**Limites da evidência (a repetir quando a cota da Groq voltar):**
+Num turno simulado (fala do usuário, tool, resposta "Registrei sua despesa de 30 reais") com o juiz recusando, o histórico ficou só com a fala do usuário e "Não tenho evidência para afirmar isso." Depois de exceções, ficou só com as falas do usuário.
 
-- A criação real do evento no Google nunca foi executada (sem Node nem credenciais).
-- A correção de valor pelo chat (caso `ZZ-ajfjdb-d`) foi recusada pelo juiz; a aprovação de `update_transaction` está provada só na camada das tools.
-- As consultas de saldo e de agenda pelo chat ficaram sem resposta por erro 400 e limite de tokens da Groq.
-- Nos casos recusados pelo chat (euro, evento, correção) não conferi o motivo do veredito nem se a tool chegou a rodar; o banco ficou sem linha em todos.
-- O veredito do JEV varia entre execuções para o mesmo pedido; a invariante vale nos dois casos.
+### O que ainda não foi provado
 
-## 5. Arquivos criados e arquivos modificados
+- A criação **real** de evento no Google (sem Node.js nem credenciais).
+- Alterar valor, consultar saldo e consultar agenda **pelo chat**: a Groq bateu o limite de uso. A alteração de valor está provada só nas tools.
+- Nos casos recusados pelo chat (euro, evento, correção), vimos o resultado, mas não conferimos o motivo exato do veredito.
+- O chat completo não foi repetido depois das últimas correções (trava e limpeza do histórico).
+- O veredito do juiz varia entre execuções para o mesmo pedido. A regra vale nos dois lados: aprovado grava uma vez, recusado não deixa nada.
 
-Criados:
+## 6. Arquivos
 
-- `app/unidade_trabalho.py`: conexão do turno, `confirmar`, `desfazer`, `liberar`, `@serializado`, `depois_do_commit`, `encerrar_turno_db`.
-- `app/cambio.py`: conversão de USD e EUR para reais.
-- `testes/prova_depois.py`: prova nas três tools, incluindo tools em paralelo.
-- `testes/serie_testes.py`: série de pedidos pelo grafo completo (dólar, euro, reais, correção, evento, consultas), com `--sem-juiz` para forçar a recusa.
-- `testes/reproduz_desencontro.py`: reproduz o "antes" (ainda não executado).
-- `testes/schema_local.sql`: esquema mínimo para o Postgres local.
-- `decisao_tecnica.md`, `MUDANCAS.md`.
+### Criados
 
-Modificados:
+| Arquivo | Para que serve |
+| --- | --- |
+| `app/unidade_trabalho.py` | O rascunho do turno: conexão, `confirmar`, `desfazer`, `liberar`, `@serializado`, `depois_do_commit`, `encerrar_turno_db` |
+| `app/cambio.py` | Converte dólar e euro para reais |
+| `testes/prova_depois.py` | Prova nas tools, incluindo tools em paralelo e o Google falso |
+| `testes/serie_testes.py` | Série de pedidos pelo chat completo (`--sem-juiz` força a recusa) |
+| `testes/reproduz_desencontro.py` | Reproduz o problema original ("o chat disse não, o banco disse sim"). Ainda não foi executado |
+| `testes/schema_local.sql` | Esquema mínimo para o Postgres local |
+| `decisao_tecnica.md`, `MUDANCAS.md` | Documentação |
 
-- `app/db.py`: `get_pgsql_conn()` devolve a conexão do turno.
-- `app/tools/financeiro.py`: `confirmar`, `desfazer` e `@serializado` nas tools; `update_transaction` na lista `TOOLS`; `add_transaction` com `currency`.
-- `app/tools/agenda.py`: `confirmar`, `desfazer`, `liberar` e `@serializado`; tool `add_google_event`, agora adiada para depois do `COMMIT`.
-- `app/juiz.py`: `escrita_autorizada`, `rastro_do_turno`, timeout de 5 s.
-- `app/graph.py`: campo `escrita_autorizada`, abertura e encerramento da transação do turno, limpeza do histórico na exceção.
-- `app/config.py`: `COTACAO_RESERVA` e `GOOGLE_OAUTH_CREDENTIALS`.
-- `app/prompts.py`: regra de moeda no financeiro; regra de `add_event` e `add_google_event` na agenda (a tool devolve "pendente").
-- `.gitignore`: logs, `historico.json` e saídas de teste locais (`r*.txt`, `resp*.txt`), que deixaram de ser versionados.
+### Modificados
 
-## 6. Registro de alterações
+| Arquivo | O que mudou |
+| --- | --- |
+| `app/db.py` | `get_pgsql_conn()` entrega a conexão do turno quando há turno |
+| `app/tools/financeiro.py` | Usa `confirmar`, `desfazer` e `@serializado`; `update_transaction` entrou na lista `TOOLS`; `add_transaction` ganhou `currency` |
+| `app/tools/agenda.py` | Usa `confirmar`, `desfazer`, `liberar` e `@serializado`; `add_google_event` cria o evento só depois do `COMMIT` |
+| `app/juiz.py` | Marca `escrita_autorizada`; limpa o histórico na recusa (`rastro_do_turno`); timeout de 5 s |
+| `app/graph.py` | Abre e fecha o rascunho do turno; limpa o histórico em caso de exceção |
+| `app/config.py` | Cotação de reserva (`USD_BRL`, `EUR_BRL`) e `GOOGLE_OAUTH_CREDENTIALS` |
+| `app/prompts.py` | Regra de moeda no financeiro; regra de `add_event` e `add_google_event` na agenda |
+| `.gitignore` | Passou a ignorar logs, `historico.json` e saídas de teste locais |
 
-1. **`decisao_tecnica.md` e `testes/reproduz_desencontro.py`.** A decisão foi escrita antes do código, e o script reproduz o desencontro nas três tools (camada das tools, sem LLM, e camada do chat). Limite: o "antes" ainda não foi executado.
-2. **Tool `add_google_event`** (`app/tools/agenda.py`, `app/config.py`, `app/prompts.py`), pelo cliente `mcp` que já estava no `requirements.txt`. Fora da invariante (seção 4).
-3. **Transação por turno** (`app/unidade_trabalho.py`, `app/db.py`, tools, `app/juiz.py`, `app/graph.py`). A fronteira da escrita passou a ser o veredito do juiz.
-4. **Testes com Postgres local e timeout de 60 s.** O Postgres derrubou uma conexão do turno por ficar parada mais de 30 s entre duas tool calls.
-5. **Conversão de moeda** (`app/cambio.py`, `add_transaction`). `currency` com BRL, USD e EUR; cotação da API, com reserva no `.env`.
-6. **Correções da análise do revisor.** Trava por turno e `RELEASE SAVEPOINT` (`@serializado`); limpeza de todas as mensagens de IA e de tool do turno na recusa e na exceção; este arquivo alinhado ao código (mecanismo `ContextVar`, timeouts de 5 s e 60 s, `update_transaction` ligada em `financeiro.TOOLS`); logs, `historico.json` e `r*.txt` tirados do repositório (continuam no disco). A chave do JEV (TypeSafe) continua no histórico do commit `042bead`: é preciso revogá-la no painel do provedor, apagar o arquivo não resolve.
-7. **Google Agenda dentro da invariante.** `add_google_event` deixou de criar o evento na hora: o pedido fica na lista do turno e só roda depois do `COMMIT` aprovado (`depois_do_commit` em `app/unidade_trabalho.py`). Provado com um Google falso: recusa, 0 chamadas; aprovação, 1 chamada.
+### Saíram do repositório (continuam no disco)
+
+`_uvicorn.log`, `_uvicorn8001.log`, `historico.json`, `r1_antes.txt`, `r2_depois.txt`, `r3_item7.txt`, `r4_item8.txt`, `resp6c.txt` e `resp6d.txt`.
+
+Rotas, API, frontend, guardrail, memória, monitor e servidor MCP ficaram como estavam.
+
+## 7. Atenção: chave exposta
+
+A chave do juiz (TypeSafe) continua no histórico do commit `042bead`. Apagar o arquivo não resolve: é preciso **revogar a chave** no painel do provedor e gerar outra.
