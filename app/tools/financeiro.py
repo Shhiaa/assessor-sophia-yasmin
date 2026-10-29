@@ -3,6 +3,7 @@ from langchain.tools import tool
 from pydantic import BaseModel, Field
 from datetime import datetime
 from app.db import get_pgsql_conn
+from app.unidade_trabalho import confirmar, desfazer
 
 # Auxiliam a descrição dos campos
 
@@ -191,11 +192,11 @@ def add_transaction(
             )
 
         new_id, occurred = cur.fetchone()
-        conn.commit()
+        confirmar(conn)
         return {"status": "ok", "id": new_id, "occurred_at": str(occurred)}
 
     except Exception as e:
-        conn.rollback()
+        desfazer(conn)
         return {"status": "error", "message": str(e)}
 
 ##############################
@@ -335,7 +336,7 @@ def search_transactions(
         entries = [dict(zip(columns, row)) for row in rows]
         return {"status": "ok", "entries": entries}
     except Exception as e:
-        conn.rollback()
+        desfazer(conn)
         return {"status": "error", "message": str(e)}
 
 ##############################
@@ -359,7 +360,7 @@ def saldo_total() -> dict:
         balance = cur.fetchone()[0]
         return {"status": "ok", "saldo": balance}
     except Exception as e:
-        conn.rollback()
+        desfazer(conn)
         return {"status": "error", "message": str(e)}
 
 ##############################
@@ -393,7 +394,7 @@ def saldo_diario(
         balance = cur.fetchone()[0]
         return {"status": "ok", "saldo": balance}
     except Exception as e:
-        conn.rollback()
+        desfazer(conn)
         return {"status": "error", "message": str(e)}
 
 ##############################
@@ -511,7 +512,7 @@ def update_transaction(
             params
         )
         rows_affected = cur.rowcount
-        conn.commit()
+        confirmar(conn)
 
         # Retornar o registro atualizado
         cur.execute(
@@ -548,8 +549,8 @@ def update_transaction(
         }
 
     except Exception as e:
-        conn.rollback()
+        desfazer(conn)
         return {"status": "error", "message": str(e)}
 
 # Exporta a lista de tools
-TOOLS = [add_transaction, search_transactions, saldo_total, saldo_diario]
+TOOLS = [add_transaction, search_transactions, saldo_total, saldo_diario, update_transaction]

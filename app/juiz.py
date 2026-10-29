@@ -7,11 +7,15 @@ import json
 import urllib.error
 import urllib.request
 
+from langchain_core.messages import RemoveMessage
+
 from app.config import TYPESAFE_API_KEY
 
 JEV_URL = "https://api.typesafe.ai/v1/systemone"
 JEV_MODELO = "jev-latest"
 LIMIAR = 0.70
+# A transação do turno fica aberta enquanto o JEV responde (SLO do turno: 8 s).
+JEV_TIMEOUT_S = 5
 FRASE_SEGURA = "Não tenho evidência para afirmar isso."
 
 REGRAS = (
@@ -68,14 +72,23 @@ def _coleta(estado):
     return pergunta, resposta, evidencia[-6000:]
 
 
-def _publicar(texto, rotulo, resposta_original):
+def _publicar(texto, rotulo, resposta_original, autorizada=False):
     print(f"[juiz] {rotulo}")
-    if texto.strip() == (resposta_original or "").strip():
-        return {"agentes_chamados": [f"juiz:{rotulo}"]}
-    return {
-        "messages": [{"role": "assistant", "content": texto.strip()}],
-        "agentes_chamados": [f"juiz:{rotulo}"],
-    }
+    resultado = {"agentes_chamados": [f"juiz:{rotulo}"], "escrita_autorizada": autorizada}
+    if texto.strip() != (resposta_original or "").strip():
+        resultado["messages"] = [{"role": "assistant", "content": texto.strip()}]
+    return resultado
+
+
+def _rastro_do_turno(estado):
+    """Remove do histórico as tool calls do turno recusado: a escrita não existe mais."""
+    mensagens = estado["messages"]
+    inicio = max((i for i, m in enumerate(mensagens) if m.type == "human"), default=0)
+    return [
+        RemoveMessage(id=m.id)
+        for m in mensagens[inicio:]
+        if m.type == "tool" or getattr(m, "tool_calls", None)
+    ]
 
 
 def _julgar_jev(pergunta, resposta, evidencia):
@@ -118,7 +131,7 @@ def _julgar_jev(pergunta, resposta, evidencia):
         method="POST",
     )
     try:
-        with urllib.request.urlopen(pedido, timeout=30) as resp:
+        with urllib.request.urlopen(pedido, timeout=JEV_TIMEOUT_S) as resp:
             dados = json.loads(resp.read().decode())
     except urllib.error.HTTPError as exc:
         return _publicar(FRASE_SEGURA, f"erro http {exc.code}", resposta)
@@ -126,7 +139,7 @@ def _julgar_jev(pergunta, resposta, evidencia):
     choice = respostas["veredito"]["choice"]
     noul = float(respostas["apoiada"]["noul"])
     if choice == "apoiada" and noul >= LIMIAR:
-        return _publicar(resposta, f"apoiada noul={noul:.2f}", resposta)
+        return _publicar(resposta, f"apoiada noul={noul:.2f}", resposta, autorizada=True)
     rotulo = "apoiada:abaixo_do_limiar" if choice == "apoiada" else choice
     return _publicar(FRASE_SEGURA, f"{rotulo} noul={noul:.2f}", resposta)
 
@@ -134,9 +147,13 @@ def _julgar_jev(pergunta, resposta, evidencia):
 def no_juiz(estado: dict) -> dict:
     pergunta, resposta, evidencia = _coleta(estado)
     if not resposta:
-        return {"agentes_chamados": ["juiz:sem_resposta"]}
-    try:
-        return _julgar_jev(pergunta, resposta, evidencia)
-    except Exception as exc:
-        print(f"[juiz] erro {exc}")
-        return _publicar(FRASE_SEGURA, "erro", resposta)
+        resultado = {"agentes_chamados": ["juiz:sem_resposta"]}
+    else:
+        try:
+            resultado = _julgar_jev(pergunta, resposta, evidencia)
+        except Exception as exc:
+            print(f"[juiz] erro {exc}")
+            resultado = _publicar(FRASE_SEGURA, "erro", resposta)
+    if not resultado.get("escrita_autorizada"):
+        resultado["messages"] = resultado.get("messages", []) + _rastro_do_turno(estado)
+    return resultado

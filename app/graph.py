@@ -22,6 +22,7 @@ from app.memory import salvar_mensagem, recuperar_mensagens_ativas
 from app.memory import salvar_mensagem
 from app.observabilidade import abrir_turno, fechar_turno, status_do_estado
 from app.juiz import no_juiz
+from app.unidade_trabalho import abrir_turno_db, encerrar_turno_db
 
 # ==============================================================================
 # ESTADO
@@ -32,7 +33,8 @@ class Estado(MessagesState):
     agentes_chamados: Annotated[list[str], operator.add]
     rota:             str
     mapa_pii:         dict
-    
+    escrita_autorizada: bool
+
 
 # ==============================================================================
 # NÓ ROTEADOR — necessário apenas para extrair a rota sem poluir messages
@@ -246,6 +248,7 @@ def executar_fluxo_assessor(pergunta_usuario: str, user_id: str) -> str:
         "agentes_chamados": [],
         "rota":             "",
         "mapa_pii":         {},
+        "escrita_autorizada": False,
     }
 
     texto_anonimizado, _ = anonimizar_entrada(pergunta_usuario)
@@ -257,6 +260,8 @@ def executar_fluxo_assessor(pergunta_usuario: str, user_id: str) -> str:
     turno_id = abrir_turno()
     status = "erro"
     rota = ""
+    autorizado = False
+    abrir_turno_db()
     try:
         estado_final = fluxo_agentes.invoke(
             estado_inicial,
@@ -264,8 +269,16 @@ def executar_fluxo_assessor(pergunta_usuario: str, user_id: str) -> str:
         )
         status = status_do_estado(estado_final)
         rota = estado_final.get("rota") or ""
+        autorizado = bool(estado_final.get("escrita_autorizada"))
     finally:
-        fechar_turno(turno_id=turno_id, session_id=user_id, rota=rota, status=status)
+        try:
+            # Só o veredito do juiz confirma as escritas do turno; o resto desfaz.
+            encerrar_turno_db(autorizado)
+        except Exception:
+            status = "erro"
+            raise
+        finally:
+            fechar_turno(turno_id=turno_id, session_id=user_id, rota=rota, status=status)
 
     resposta_final = estado_final["messages"][-1].text
 

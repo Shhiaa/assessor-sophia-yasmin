@@ -1,6 +1,6 @@
 # Decisão técnica — Etapa 8: o juiz e a escrita
 
-Status: decisão tomada e pontos em aberto fechados; implementação ainda não feita. As seções 1 a 3 descrevem a solução escolhida; a seção 4 reúne as decisões complementares; a seção 5 lista os arquivos. A seção 6 é o registro de cada alteração feita no repositório, com o motivo de cada escolha e o motivo de cada alternativa que ficou de fora.
+Status: decisão tomada e implementada (lista completa das mudanças em `MUDANCAS.md`); a prova com o Postgres (`testes/prova_depois.py`) ainda precisa ser rodada na máquina com acesso ao banco. `add_google_event` ficou fora da invariante nesta entrega. As seções 1 a 3 descrevem a solução escolhida; a seção 4 reúne as decisões complementares; a seção 5 lista os arquivos. A seção 6 é o registro de cada alteração feita no repositório, com o motivo de cada escolha e o motivo de cada alternativa que ficou de fora.
 
 Nenhuma chave, token, `.env` ou URL com senha aparece neste arquivo.
 
@@ -95,7 +95,11 @@ Modificados:
 - `app/config.py`: lê `GOOGLE_OAUTH_CREDENTIALS` (caminho do arquivo de credenciais OAuth, sem o conteúdo).
 - `app/prompts.py`: uma regra no prompt da agenda dizendo quando usar `add_event` e quando usar `add_google_event`.
 
-Previstos para a implementação (serão movidos para cima quando existirem): `app/unidade_trabalho.py` (novo), `app/db.py`, `app/tools/financeiro.py`, `app/tools/agenda.py`, `app/juiz.py`, `app/graph.py` e `app/agents.py`.
+Implementação da transação por turno:
+
+- Criados: `app/unidade_trabalho.py` (conexão do turno, confirmar/desfazer), `testes/prova_depois.py` (prova com marcador único) e `MUDANCAS.md`.
+- Modificados: `app/db.py` (devolve a conexão do turno), `app/tools/financeiro.py` (sem commit no turno; `update_transaction` ligada às tools do financeiro), `app/tools/agenda.py` (sem commit nem close no turno), `app/juiz.py` (`escrita_autorizada`, limpeza do histórico na recusa, timeout de 5 s) e `app/graph.py` (abre e encerra a transação do turno).
+- `app/agents.py` não precisou mudar: a ligação de `update_transaction` foi feita na lista `TOOLS` de `app/tools/financeiro.py`.
 
 ## 6. Registro de alterações
 

@@ -5,6 +5,7 @@ from app.config import (
     QDRANT_API_KEY, 
     GEMINI_API_KEY
 )
+from app.unidade_trabalho import conexao_do_turno
 from qdrant_client import QdrantClient
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
@@ -26,6 +27,9 @@ _embeddings = GoogleGenerativeAIEmbeddings(
 
 def get_pgsql_conn():
     global _pgsql_conn
+    conn_turno = conexao_do_turno()
+    if conn_turno is not None:
+        return conn_turno
     if _pgsql_conn is None or _pgsql_conn.closed:
         _pgsql_conn = psycopg2.connect(URL_DB)
     return _pgsql_conn

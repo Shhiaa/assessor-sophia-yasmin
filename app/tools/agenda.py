@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from app.db import get_pgsql_conn as get_conn
 from app.config import GOOGLE_OAUTH_CREDENTIALS
+from app.unidade_trabalho import confirmar, desfazer, liberar
 
 
 class AddEventArgs(BaseModel):
@@ -47,7 +48,7 @@ def add_event(
             (title, start_time, end_time, location, notes, source_text),
         )
         new_id, start, end = cur.fetchone()
-        conn.commit()
+        confirmar(conn)
         return {
             "status": "ok",
             "id": new_id,
@@ -56,12 +57,12 @@ def add_event(
             "end_time": str(end) if end else None,
         }
     except Exception as e:
-        conn.rollback()
+        desfazer(conn)
         return {"status": "error", "message": str(e)}
     finally:
         try:
             cur.close()
-            conn.close()
+            liberar(conn)
         except Exception:
             pass
 
@@ -171,11 +172,12 @@ def query_events(
         return {"status": "ok", "count": len(results), "results": results}
 
     except Exception as e:
+        desfazer(conn)
         return {"status": "error", "message": str(e)}
     finally:
         try:
             cur.close()
-            conn.close()
+            liberar(conn)
         except Exception:
             pass
 
