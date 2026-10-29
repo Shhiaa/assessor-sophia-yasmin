@@ -3,6 +3,7 @@ from langchain.tools import tool
 from pydantic import BaseModel, Field
 from datetime import datetime
 from app.db import get_pgsql_conn
+from app.cambio import MOEDAS, converter_para_brl
 from app.unidade_trabalho import confirmar, desfazer
 
 # Auxiliam a descrição dos campos
@@ -130,7 +131,8 @@ OPERATOR_ALIASES = {
 
 # Essa classe garante que o objeto de Python passe todos esses campos
 class AddTransactionArgs(BaseModel):
-    amount: float = Field(..., description="Valor da transação (use positivo).")
+    amount: float = Field(..., description="Valor da transação, na moeda de 'currency' (use positivo).")
+    currency: str = Field(default="BRL", description="Moeda do valor informado pelo usuário: BRL | USD | EUR (dólar = USD, euro = EUR). A tool converte para reais.")
     source_text: str = Field(..., description="Texto original do usuário.")
     description: str = Field(..., description="Descrição simples da transação.")
     type_name: str = Field(..., description="Nome do tipo: INCOME | EXPENSES | TRANSFER.")
@@ -154,9 +156,16 @@ def add_transaction(
     payment_method: Optional[str] = None,
     occurred_at: Optional[str] = None,
     category_id: int = 12,
-    type_id: int = 2
+    type_id: int = 2,
+    currency: str = "BRL"
 ) -> dict:
     """Insere uma transação financeira no banco de dados Postgres.""" # docstring obrigatório da @tools do langchain (estranho, mas legal né?)
+    moeda = currency.strip().upper()
+    if moeda not in MOEDAS:
+        return {"status": "error", "message": f"Moeda inválida '{currency}' (use: {', '.join(MOEDAS)})."}
+    conversao = converter_para_brl(amount, moeda)
+    amount = conversao["valor_brl"]
+
     conn = get_pgsql_conn()
     cur = conn.cursor()
     try:
@@ -193,7 +202,11 @@ def add_transaction(
 
         new_id, occurred = cur.fetchone()
         confirmar(conn)
-        return {"status": "ok", "id": new_id, "occurred_at": str(occurred)}
+        return {
+            "status": "ok", "id": new_id, "occurred_at": str(occurred),
+            "amount_brl": amount, "moeda_original": moeda, "cotacao_brl": conversao["cotacao"],
+            "fonte_cotacao": conversao["fonte"],
+        }
 
     except Exception as e:
         desfazer(conn)

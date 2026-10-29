@@ -16,6 +16,7 @@ Depois: tool grava na conexão do turno (sem commit) → orquestrador → guardr
 | --- | --- |
 | `app/unidade_trabalho.py` | Conexão do turno (guardada num `ContextVar`), `confirmar`, `desfazer`, `liberar` e `encerrar_turno_db`. Cada chamada de tool abre um `SAVEPOINT`, então um erro numa tool desfaz só aquela chamada. A conexão tem `idle_in_transaction_session_timeout` de 60 s (com 30 s o Postgres derrubou um turno em que o LLM demorou entre duas tool calls). |
 | `testes/prova_depois.py` | Prova, com marcador único `ZZ-<hora>-<n>` e uma conexão separada, que o turno recusado não deixa linha e o aprovado grava uma vez, nas três tools. Não usa LLM nem JEV. |
+| `app/cambio.py` | Conversão de USD/EUR para reais: AwesomeAPI (sem chave, `urllib`, timeout 3 s) e, se falhar, a cotação de reserva do `.env` (`USD_BRL`, `EUR_BRL`). Sem dependência nova. |
 | `testes/schema_local.sql` | Esquema mínimo (inferido das queries das tools) para testar num Postgres local no Docker. O banco Aiven do `.env` não existe mais no DNS. |
 | `testes/prova_chat.py` | Prova pelo grafo completo (`executar_fluxo_assessor`): mostra mensagem enviada, resposta e linhas do banco; a sequence do `id` prova que o INSERT foi tentado mesmo quando o rollback o desfez. `--sem-juiz` força a recusa. |
 | `testes/prova_dolar.py` | O caso do HTML (compra em dólares) pelo grafo completo, com o juiz real. |
@@ -27,8 +28,10 @@ Depois: tool grava na conexão do turno (sem commit) → orquestrador → guardr
 | Arquivo | O que mudou |
 | --- | --- |
 | `app/db.py` | `get_pgsql_conn()` devolve a conexão do turno quando há turno aberto. Sem turno, devolve a global como antes. |
-| `app/tools/financeiro.py` | `conn.commit()` virou `confirmar(conn)` e `conn.rollback()` virou `desfazer(conn)`. `update_transaction` entrou na lista `TOOLS` (antes só o MCP a usava). |
+| `app/tools/financeiro.py` | `conn.commit()` virou `confirmar(conn)` e `conn.rollback()` virou `desfazer(conn)`. `update_transaction` entrou na lista `TOOLS` (antes só o MCP a usava). `add_transaction` ganhou `currency` (BRL, USD ou EUR): converte para reais antes de gravar e devolve `amount_brl`, `moeda_original`, `cotacao_brl` e `fonte_cotacao`. O valor e a moeda originais ficam no `source_text`; a tabela não mudou. |
 | `app/tools/agenda.py` | Mesma troca em `add_event`. `conn.close()` virou `liberar(conn)` em `add_event` e `query_events`, e `query_events` ganhou `desfazer(conn)` no erro. |
+| `app/config.py` | `COTACAO_RESERVA` (lê `USD_BRL` e `EUR_BRL` do `.env`, padrão 5,50 e 6,00). |
+| `app/prompts.py` | Regra no prompt do financeiro: valor em dólar ou euro vai com `currency` e a resposta informa valor original, cotação e valor em reais. |
 | `app/juiz.py` | `_publicar` devolve `escrita_autorizada` (verdadeiro só no veredito `apoiada` com noul ≥ 0,70). Na recusa, remove do histórico as tool calls do turno (`RemoveMessage`). Timeout do JEV de 30 s para 5 s (`JEV_TIMEOUT_S`). |
 | `app/graph.py` | Campo `escrita_autorizada` no `Estado` (iniciado em `False` a cada turno). `executar_fluxo_assessor` abre o turno no banco antes do `invoke` e chama `encerrar_turno_db(autorizado)` no `finally`. Se o `COMMIT` falhar, o turno conta como `erro` no monitor. |
 
@@ -55,7 +58,8 @@ Ambiente de teste: Postgres 17 num contêiner Docker local (`pg-teste17`, porta 
 | Chat, criar evento, juiz real aprovou (`apoiada` 0,86) | 1 evento gravado, uma vez |
 | Chat, criar transação em reais, juiz real aprovou (`apoiada` 0,80 a 0,94) | 1 linha gravada, uma vez |
 | Chat, `--sem-juiz` (falha fechada) | recusa, 0 linhas |
-| Chat, caso dos dólares ("Comprei uma coca por 2 dólares") | juiz recusou (`sem_apoio` 0,15), 0 linhas (antes da correção a linha ficava) |
+| Chat, caso dos dólares com conversão ("Comprei uma coca por 2 dólares") | tool chamada com `currency="USD"`, cotação 5,3462 (API), gravou R$ 10,69 uma vez, juiz `apoiada` 0,78. Em outra execução o juiz ficou em 0,66 (abaixo do limiar de 0,70) e recusou: 0 linhas. |
+| Conversão isolada (`app/cambio.py`) | USD e EUR pela API ok; com a API indisponível usa a reserva do `.env` (`fonte: reserva`) |
 | Exceção no meio do turno (erro 400 da Groq depois da tool) | 0 linhas, sequence subiu: o rollback também vale para exceção |
 
 Observações:

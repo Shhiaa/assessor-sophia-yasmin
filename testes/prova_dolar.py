@@ -1,13 +1,15 @@
 """
-O caso do HTML: compra em dólares. A tool grava amount=2 sem moeda, o chat
-responde em reais, o juiz recusa (moeda trocada). Antes da correção a linha
-ficava no banco; agora o rollback a desfaz.
+O caso do HTML: compra em dólares. Antes a tool gravava amount=2 sem moeda, o chat
+respondia em reais e o juiz recusava (moeda trocada). Agora a tool recebe
+currency="USD", converte para reais e devolve valor original, cotação e fonte;
+o juiz usa isso como evidência.
 
     python testes/prova_dolar.py [--modelo especialista|rapido]
 
 Mostra a mensagem enviada, a resposta, o veredito do juiz e as linhas do banco
 com o marcador ZZ-<hora em letras>-<letra do caso>. Caso a: dólar (esperado:
-recusa, 0 linhas). Caso b: reais (esperado: aprova, 1 linha).
+aprova, 1 linha com o valor convertido). Caso b: reais (esperado: aprova, 1 linha).
+O veredito do JEV varia: se recusar, o banco precisa ficar com 0 linhas.
 """
 import sys
 import time

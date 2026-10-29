@@ -26,6 +26,12 @@ TYPESAFE_API_KEY = os.getenv("TYPESAFE_API_KEY")
 # Fora de OBRIGATORIAS: sem ele só add_google_event deixa de funcionar.
 GOOGLE_OAUTH_CREDENTIALS = os.getenv("GOOGLE_OAUTH_CREDENTIALS")
 
+# Cotação de reserva (BRL por 1 unidade) usada só se a API de câmbio falhar.
+COTACAO_RESERVA = {
+    "USD": float(os.getenv("USD_BRL", "5.50")),
+    "EUR": float(os.getenv("EUR_BRL", "6.00")),
+}
+
 OBRIGATORIAS = {
     "GEMINI_API_KEY": GEMINI_API_KEY,
     "GROQ_API_KEY":   GROQ_API_KEY,

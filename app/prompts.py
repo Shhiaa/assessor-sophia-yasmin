@@ -177,6 +177,9 @@ Finanças pessoais: gastos, receitas, dívidas, orçamento, metas, investimentos
 - Ao registrar qualquer transação, SEMPRE infira e envie category_name com um
   dos valores: comida, besteira, estudo, férias, transporte, moradia, saúde,
   lazer, contas, investimento, presente, outros.
+- Se o valor vier em dólar (USD) ou euro (EUR), registre com currency="USD" ou "EUR" e o
+  valor original em amount: a tool converte para reais. Na resposta informe o valor
+  original, a cotação e o valor em reais devolvidos pela tool.
 
 
 ### REGRAS
