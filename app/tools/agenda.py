@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from app.db import get_pgsql_conn as get_conn
 from app.config import GOOGLE_OAUTH_CREDENTIALS
-from app.unidade_trabalho import confirmar, desfazer, liberar
+from app.unidade_trabalho import serializado, confirmar, desfazer, liberar
 
 
 class AddEventArgs(BaseModel):
@@ -25,6 +25,7 @@ class AddEventArgs(BaseModel):
 
 
 @tool("add_event", args_schema=AddEventArgs)
+@serializado
 def add_event(
     title: str,
     source_text: str,
@@ -92,6 +93,7 @@ class QueryEventsArgs(BaseModel):
 
 
 @tool("query_events", args_schema=QueryEventsArgs)
+@serializado
 def query_events(
     text: Optional[str] = None,
     date_local: Optional[str] = None,

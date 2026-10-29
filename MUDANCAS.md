@@ -45,7 +45,7 @@ Mudanças da etapa anterior (já no repositório): `app/tools/agenda.py` (tool `
 - **Repetição do pedido:** sem deduplicação. Recusa seguida de repetição aprovada grava uma linha.
 - **`add_google_event`:** continua **fora** da invariante (o evento no Google é criado na hora da tool e o `ROLLBACK` não o alcança). Foi mantido assim para não aumentar a mudança; está registrado em `decisao_tecnica.md`.
 - **`salvar_mensagem` (Mongo):** inalterado, continua depois do juiz.
-- **Duas tool calls paralelas no mesmo turno** compartilham a conexão e o nome do savepoint. Se uma falhar, o `ROLLBACK TO SAVEPOINT` pode desfazer também a outra.
+- **Tools em paralelo no mesmo turno:** `@serializado` faz uma tool por vez na conexão do turno (sem a trava, 8 de 12 turnos com 4 `add_transaction` simultâneas perdiam linha; com ela, 0).
 
 ## Verificação
 
@@ -66,3 +66,15 @@ Observações:
 - O veredito do JEV varia entre execuções (o mesmo pedido em reais foi aprovado e depois recusado). A invariante vale nos dois casos.
 - O `gpt-oss` da Groq às vezes devolve erro 400 de tool call inválida; o teste repete em outra sessão.
 - Não foram testados pelo chat: alterar valor (`update_transaction`) e consulta de saldo (limite de tokens por minuto da Groq). `update_transaction` está coberto por `prova_depois.py`.
+
+## Correções da análise do revisor (PDF "Etapa 8 — Análise da solução")
+
+| Ponto do revisor | O que foi feito |
+| --- | --- |
+| 1. Tools em paralelo perdem escrita | `@serializado` (em `app/unidade_trabalho.py`) nas 7 tools do Postgres: trava por turno (`RLock` no dicionário do turno) e `RELEASE SAVEPOINT` ao fim de cada chamada. `testes/prova_depois.py` ganhou o teste de 4 tools em paralelo em 12 turnos: 0 perdas com a trava, 8 perdas sem ela. |
+| 2. Histórico sujo depois da recusa | `rastro_do_turno` (`app/juiz.py`) remove todas as mensagens de IA e de tool do turno na recusa. Verificado com um turno simulado: sobram a fala do usuário e a frase segura. |
+| 3. Exceção não limpa o histórico | `executar_fluxo_assessor` remove o mesmo rastro do checkpoint (`update_state`) antes de relançar a exceção. Verificado: depois de exceções seguidas o histórico tem só as falas do usuário. |
+| 4. Google fora da invariante | Mantido, escrito como decisão consciente com o risco (o evento permanece no Google se o juiz recusar). Corrigida a justificativa: apagar com `delete-event` é possível e fica como melhoria. |
+| 5. Evidência incompleta | `decisao_tecnica.md` agora tem a evidência por tool com marcador único, a tabela do chat e os limites (correção de valor, consultas e motivo das recusas ainda a repetir quando a cota da Groq voltar). `prova_depois.py` foi executado (8 de 8). |
+| 6. `decisao_tecnica.md` inconsistente | Reescrito alinhado ao código: `ContextVar` no lugar de `turno_id`, timeouts de 5 s (juiz) e 60 s (transação), `update_transaction` ligada em `financeiro.TOOLS`, log de implementação. |
+| 7. Sujeira e segurança | `_uvicorn*.log`, `historico.json`, `r*.txt` e `resp*.txt` saíram do repositório (`git rm --cached`; os arquivos continuam no disco) e entraram no `.gitignore`. **A chave TypeSafe segue no histórico do commit `042bead`: é preciso revogá-la no provedor.** |

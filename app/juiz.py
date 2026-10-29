@@ -80,15 +80,12 @@ def _publicar(texto, rotulo, resposta_original, autorizada=False):
     return resultado
 
 
-def _rastro_do_turno(estado):
-    """Remove do histórico as tool calls do turno recusado: a escrita não existe mais."""
+def rastro_do_turno(estado):
+    """Remoções das mensagens de IA e de tool do turno: depois de uma recusa (ou de uma
+    exceção) o histórico não pode afirmar uma escrita que não permaneceu."""
     mensagens = estado["messages"]
     inicio = max((i for i, m in enumerate(mensagens) if m.type == "human"), default=0)
-    return [
-        RemoveMessage(id=m.id)
-        for m in mensagens[inicio:]
-        if m.type == "tool" or getattr(m, "tool_calls", None)
-    ]
+    return [RemoveMessage(id=m.id) for m in mensagens[inicio:] if m.type in ("ai", "tool")]
 
 
 def _julgar_jev(pergunta, resposta, evidencia):
@@ -155,5 +152,5 @@ def no_juiz(estado: dict) -> dict:
             print(f"[juiz] erro {exc}")
             resultado = _publicar(FRASE_SEGURA, "erro", resposta)
     if not resultado.get("escrita_autorizada"):
-        resultado["messages"] = resultado.get("messages", []) + _rastro_do_turno(estado)
+        resultado["messages"] = resultado.get("messages", []) + rastro_do_turno(estado)
     return resultado

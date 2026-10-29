@@ -222,3 +222,9 @@ __marimo__/
 # assessor
 .env
 data/faiss_faq_index/
+
+# logs e saídas de teste locais
+_uvicorn*.log
+historico.json
+r[0-9]_*.txt
+resp*.txt

@@ -9,8 +9,10 @@ Rode da raiz do projeto, com o .env preenchido:
 Cada tentativa usa um marcador único (ZZ-<hora>-<n>). As linhas dos turnos
 aprovados ficam no banco como evidência (marcador ZZ-...).
 """
+import contextvars
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -100,6 +102,18 @@ nova_transacao(m)
 nova_transacao(m)  # a segunda escrita do turno usa a mesma conexão
 encerrar_turno_db(False)
 conferir("duas escritas no mesmo turno, turno recusado", contar(TX, m), 0)
+
+# quatro add_transaction simultâneas no mesmo turno (o ToolNode roda tool calls em paralelo)
+perdas = 0
+for rodada in range(12):
+    m = f"ZZ-{RODADA}-p{rodada}"
+    abrir_turno_db()
+    with ThreadPoolExecutor(4) as pool:
+        futuros = [pool.submit(contextvars.copy_context().run, nova_transacao, f"{m}-{i}") for i in range(4)]
+        [f.result() for f in futuros]
+    encerrar_turno_db(True)
+    perdas += contar("SELECT count(*) FROM transactions WHERE source_text LIKE %s", f"{m}-%") != 4
+conferir("4 tools em paralelo: turnos com linha faltando (de 12)", perdas, 0)
 
 print("\nRESULTADO:", "tudo certo" if not falhas else f"falhou: {falhas}")
 sys.exit(1 if falhas else 0)

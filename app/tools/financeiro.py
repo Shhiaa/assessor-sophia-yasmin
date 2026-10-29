@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 from datetime import datetime
 from app.db import get_pgsql_conn
 from app.cambio import MOEDAS, converter_para_brl
-from app.unidade_trabalho import confirmar, desfazer
+from app.unidade_trabalho import serializado, confirmar, desfazer
 
 # Auxiliam a descrição dos campos
 
@@ -147,6 +147,7 @@ class AddTransactionArgs(BaseModel):
     payment_method: Optional[str] = Field(default=None, description="Forma de pagamento (opcional).")
 
 @tool("add_transaction", args_schema=AddTransactionArgs)
+@serializado
 def add_transaction(
     amount: float,
     source_text: str,
@@ -256,6 +257,7 @@ class SearchTransactionArgs(BaseModel):
     payment_method: Optional[str] = Field(default=None, description="Expressão Regular que procurará a forma de pagamento (opcional).")
 
 @tool("search_transactions", args_schema=SearchTransactionArgs)
+@serializado
 def search_transactions(
     amount_min: Optional[float] = None,
     amount_max: Optional[float] = None,
@@ -357,6 +359,7 @@ def search_transactions(
 ##############################
 
 @tool("saldo_total")
+@serializado
 def saldo_total() -> dict:
     """Consulta o saldo total do usuário.""" # docstring obrigatório da @tools do langchain (estranho, mas legal né?)
     conn = get_pgsql_conn()
@@ -386,6 +389,7 @@ class DailyBalanceArgs(BaseModel):
     )
 
 @tool("saldo_diario", args_schema=DailyBalanceArgs)
+@serializado
 def saldo_diario(
     occurred_at: Optional[str] = None
 ) -> dict:
@@ -437,6 +441,7 @@ class UpdateTransactionArgs(BaseModel):
     occurred_at: Optional[str] = Field(default=None, description="Novo timestamp ISO 8601.")
 
 @tool("update_transaction", args_schema=UpdateTransactionArgs)
+@serializado
 def update_transaction(
     id: Optional[int] = None,
     match_text: Optional[str] = None,

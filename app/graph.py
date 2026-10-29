@@ -21,7 +21,7 @@ from app.memory import salvar_mensagem, recuperar_mensagens_ativas
 # Observabilidade
 from app.memory import salvar_mensagem
 from app.observabilidade import abrir_turno, fechar_turno, status_do_estado
-from app.juiz import no_juiz
+from app.juiz import no_juiz, rastro_do_turno
 from app.unidade_trabalho import abrir_turno_db, encerrar_turno_db
 
 # ==============================================================================
@@ -229,7 +229,7 @@ fluxo_agentes = grafo.compile(checkpointer=memory)
 # FLUXO PRINCIPAL
 # ==============================================================================
 def executar_fluxo_assessor(pergunta_usuario: str, user_id: str) -> str:
-    config = {"configurable": {"thread_id": user_id}}
+    config = {"configurable": {"thread_id": user_id, "user_id": user_id}}
 
     mensagens_previas = []
     if not fluxo_agentes.get_state(config).values.get("messages"):
@@ -263,13 +263,15 @@ def executar_fluxo_assessor(pergunta_usuario: str, user_id: str) -> str:
     autorizado = False
     abrir_turno_db()
     try:
-        estado_final = fluxo_agentes.invoke(
-            estado_inicial,
-            config={"configurable": {"thread_id": user_id, "user_id": user_id}},
-        )
+        estado_final = fluxo_agentes.invoke(estado_inicial, config=config)
         status = status_do_estado(estado_final)
         rota = estado_final.get("rota") or ""
         autorizado = bool(estado_final.get("escrita_autorizada"))
+    except Exception:
+        # O turno vai a rollback; o checkpoint guarda as tool calls até onde chegou.
+        mensagens = fluxo_agentes.get_state(config).values.get("messages", [])
+        fluxo_agentes.update_state(config, {"messages": rastro_do_turno({"messages": mensagens})})
+        raise
     finally:
         try:
             # Só o veredito do juiz confirma as escritas do turno; o resto desfaz.

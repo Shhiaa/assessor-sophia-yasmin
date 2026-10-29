@@ -4,7 +4,9 @@ conexão própria do turno e não confirmam. Quem confirma é o fechamento do
 turno (graph.py), e só se o juiz autorizou. Fora de um turno (MCP, scripts)
 nada muda: as tools seguem com a conexão global e o commit imediato.
 """
+import threading
 from contextvars import ContextVar
+from functools import wraps
 
 import psycopg2
 
@@ -15,7 +17,7 @@ _turno: ContextVar = ContextVar("turno_db", default=None)
 
 
 def abrir_turno_db() -> None:
-    _turno.set({"conn": None})
+    _turno.set({"conn": None, "lock": threading.RLock()})
 
 
 def conexao_do_turno():
@@ -30,6 +32,30 @@ def conexao_do_turno():
     with turno["conn"].cursor() as cur:
         cur.execute("SAVEPOINT tool")
     return turno["conn"]
+
+
+def serializado(func):
+    """Uma tool por vez na conexão do turno (o ToolNode roda tool calls em paralelo).
+
+    Sem isso, os SAVEPOINTs e o ROLLBACK TO SAVEPOINT de tools simultâneas se
+    misturam. Ao fim de cada chamada o savepoint é liberado.
+    """
+    @wraps(func)
+    def com_trava(*args, **kwargs):
+        turno = _turno.get()
+        if turno is None:
+            return func(*args, **kwargs)
+        with turno["lock"]:
+            try:
+                return func(*args, **kwargs)
+            finally:
+                if turno["conn"] is not None:
+                    try:
+                        with turno["conn"].cursor() as cur:
+                            cur.execute("RELEASE SAVEPOINT tool")
+                    except psycopg2.Error:
+                        pass  # transação já abortada: o encerramento do turno desfaz tudo
+    return com_trava
 
 
 def _no_turno(conn) -> bool:
