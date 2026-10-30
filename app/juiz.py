@@ -17,6 +17,9 @@ LIMIAR = 0.70
 # A transação do turno fica aberta enquanto o JEV responde (SLO do turno: 8 s).
 JEV_TIMEOUT_S = 5
 FRASE_SEGURA = "Não tenho evidência para afirmar isso."
+# Quando o turno recusado tinha tentado escrever, o usuário precisa saber que nada foi salvo.
+FRASE_SEM_ESCRITA = "Não consegui confirmar esse pedido, então nada foi registrado."
+TOOLS_DE_ESCRITA = {"add_transaction", "update_transaction", "add_event", "add_google_event"}
 
 REGRAS = (
     "A pergunta do usuário também é evidência do que ele disse que fez. "
@@ -80,12 +83,24 @@ def _publicar(texto, rotulo, resposta_original, autorizada=False):
     return resultado
 
 
+def _mensagens_do_turno(estado):
+    mensagens = estado["messages"]
+    inicio = max((i for i, m in enumerate(mensagens) if m.type == "human"), default=0)
+    return mensagens[inicio:]
+
+
 def rastro_do_turno(estado):
     """Remoções das mensagens de IA e de tool do turno: depois de uma recusa (ou de uma
     exceção) o histórico não pode afirmar uma escrita que não permaneceu."""
-    mensagens = estado["messages"]
-    inicio = max((i for i, m in enumerate(mensagens) if m.type == "human"), default=0)
-    return [RemoveMessage(id=m.id) for m in mensagens[inicio:] if m.type in ("ai", "tool")]
+    return [RemoveMessage(id=m.id) for m in _mensagens_do_turno(estado) if m.type in ("ai", "tool")]
+
+
+def _tentou_escrever(estado):
+    return any(
+        chamada.get("name") in TOOLS_DE_ESCRITA
+        for m in _mensagens_do_turno(estado) if m.type == "ai"
+        for chamada in getattr(m, "tool_calls", None) or []
+    )
 
 
 def _julgar_jev(pergunta, resposta, evidencia):
@@ -152,5 +167,7 @@ def no_juiz(estado: dict) -> dict:
             print(f"[juiz] erro {exc}")
             resultado = _publicar(FRASE_SEGURA, "erro", resposta)
     if not resultado.get("escrita_autorizada"):
+        if resposta and _tentou_escrever(estado):
+            resultado["messages"] = [{"role": "assistant", "content": FRASE_SEM_ESCRITA}]
         resultado["messages"] = resultado.get("messages", []) + rastro_do_turno(estado)
     return resultado

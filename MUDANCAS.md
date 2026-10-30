@@ -32,7 +32,7 @@ Depois: tool grava na conexão do turno (sem commit) → orquestrador → guardr
 | `app/tools/agenda.py` | Mesma troca em `add_event`. `conn.close()` virou `liberar(conn)` em `add_event` e `query_events`, e `query_events` ganhou `desfazer(conn)` no erro. |
 | `app/config.py` | `COTACAO_RESERVA` (lê `USD_BRL` e `EUR_BRL` do `.env`, padrão 5,50 e 6,00). |
 | `app/prompts.py` | Regra de `add_google_event` (devolve "pendente") e, no financeiro: valor em dólar ou euro vai com `currency` e a resposta informa valor original, cotação e valor em reais. |
-| `app/juiz.py` | `_publicar` devolve `escrita_autorizada` (verdadeiro só no veredito `apoiada` com noul ≥ 0,70). Na recusa, remove do histórico as tool calls do turno (`RemoveMessage`). Timeout do JEV de 30 s para 5 s (`JEV_TIMEOUT_S`). |
+| `app/juiz.py` | `_publicar` devolve `escrita_autorizada` (verdadeiro só no veredito `apoiada` com noul ≥ 0,70). Na recusa, remove do histórico as tool calls do turno (`RemoveMessage`). Timeout do JEV de 30 s para 5 s (`JEV_TIMEOUT_S`). Quando o turno recusado tinha tentado escrever, a resposta é "Não consegui confirmar esse pedido, então nada foi registrado." (`FRASE_SEM_ESCRITA`); sem escrita, continua a frase segura antiga. |
 | `app/graph.py` | Campo `escrita_autorizada` no `Estado` (iniciado em `False` a cada turno). `executar_fluxo_assessor` abre o turno no banco antes do `invoke` e chama `encerrar_turno_db(autorizado)` no `finally`. Se o `COMMIT` falhar, o turno conta como `erro` no monitor. |
 
 Mudanças da etapa anterior (já no repositório): `app/tools/agenda.py` (tool `add_google_event`), `app/config.py` (`GOOGLE_OAUTH_CREDENTIALS`) e `app/prompts.py` (regra de quando usar `add_event` ou `add_google_event`).
@@ -78,3 +78,18 @@ Observações:
 | 5. Evidência incompleta | `decisao_tecnica.md` agora tem a evidência por tool com marcador único, a tabela do chat e os limites (correção de valor, consultas e motivo das recusas ainda a repetir quando a cota da Groq voltar). `prova_depois.py` foi executado (8 de 8). |
 | 6. `decisao_tecnica.md` inconsistente | Reescrito alinhado ao código: `ContextVar` no lugar de `turno_id`, timeouts de 5 s (juiz) e 60 s (transação), `update_transaction` ligada em `financeiro.TOOLS`, log de implementação. |
 | 7. Sujeira e segurança | `_uvicorn*.log`, `historico.json`, `r*.txt` e `resp*.txt` saíram do repositório (`git rm --cached`; os arquivos continuam no disco) e entraram no `.gitignore`. **A chave TypeSafe segue no histórico do commit `042bead`: é preciso revogá-la no provedor.** |
+
+## Provas pelo chat com o código final (rodada `agfecj`, juiz real)
+
+| Pedido | Resultado |
+| --- | --- |
+| 15,50 dólares | R$ 83,47 gravado uma vez |
+| 20 euros | Recusado com "Não consegui confirmar esse pedido, então nada foi registrado."; 0 linhas |
+| 30 reais | R$ 30,00 gravado uma vez |
+| 20 reais e, na mesma conversa, "Corrija … para 25 reais" | A mesma linha passou a R$ 25,00, sem linha nova (`update_transaction` aprovado pelo chat) |
+| Evento 02/01/2030 às 15:00 | 1 evento gravado |
+| Saldo total | Responde com o `gpt-oss-20b`; com o 120b a Groq dá erro 400, também no código antigo |
+| "Antes" (código da Etapa 7, `reproduz_desencontro.py`, rodada `125324`) | As três tools gravaram antes do veredito |
+| Monitor | 2 turnos `ok`, rota `financeiro`, 7,5 s e 52,8 s (a espera de nova tentativa da Groq pesa); exceções aparecem como `erro` |
+
+Continua sem prova: criação real de evento no Google e consulta de agenda pelo chat.

@@ -139,5 +139,26 @@ m = f"ZZ-{RODADA}-g3"
 novo_google(m)
 conferir("add_google_event fora de turno: cria na hora", chamadas_google.count(m), 1)
 
+# Frase da recusa: o usuário precisa saber que nada foi registrado quando havia escrita
+import app.juiz as juiz  # noqa: E402
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage  # noqa: E402
+
+juiz.TYPESAFE_API_KEY = ""  # sem chave o juiz falha fechado: todo turno é recusado
+
+
+def frase_da_recusa(*mensagens) -> str:
+    saida = juiz.no_juiz({"messages": list(mensagens)})
+    return [m["content"] for m in saida["messages"] if isinstance(m, dict)][-1]
+
+
+pedido = HumanMessage(content="Gastei 30 reais", id="h")
+chamada = AIMessage(content="", id="a1", tool_calls=[{"name": "add_transaction", "args": {}, "id": "c"}])
+retorno = ToolMessage(content="{}", tool_call_id="c", name="add_transaction", id="t")
+resposta_ia = AIMessage(content="Registrei sua despesa.", id="a2")
+conferir("recusa com escrita diz que nada foi registrado",
+         frase_da_recusa(pedido, chamada, retorno, resposta_ia), juiz.FRASE_SEM_ESCRITA)
+conferir("recusa sem escrita mantém a frase segura",
+         frase_da_recusa(pedido, AIMessage(content="O saldo é 10.", id="a3")), juiz.FRASE_SEGURA)
+
 print("\nRESULTADO:", "tudo certo" if not falhas else f"falhou: {falhas}")
 sys.exit(1 if falhas else 0)
